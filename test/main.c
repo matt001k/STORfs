@@ -11,9 +11,9 @@ uint8_t memorySim[MEMORYSIMSIZE];
 static void display_cache(storfs_t fs)
 {
   printf("Cached Data: \n \
-  root location 1: %ld, %ld \n \
-  root location 2: %ld, %ld \n \
-  next open byte: %ld \n", fs.cachedInfo.rootLocation[0].pageLoc, fs.cachedInfo.rootLocation[0].byteLoc, \
+  root location 1: %d, %d \n \
+  root location 2: %d, %d \n \
+  next open byte: %d \n", fs.cachedInfo.rootLocation[0].pageLoc, fs.cachedInfo.rootLocation[0].byteLoc, \
   fs.cachedInfo.rootLocation[1].pageLoc, fs.cachedInfo.rootLocation[1].byteLoc, fs.cachedInfo.nextOpenByte);
 }
 
@@ -177,8 +177,9 @@ int main(void) {
     storfs_fgets(&fs, buffer, 1050 + 1024, &file1);
     buffer[1050+1024] = '\0';
     printf("File Read: %s \n", buffer);
+    display_cache(fs);
 
-    /*//Test removing a file
+    //Test removing a file
     storfs_rm(&fs, "C:/HelloDere/hello.txt", &file1);   
     storfs_fgets(&fs, buffer, 1024, &file1);
     fs.read(&fs, 4, 0, (uint8_t *)buffer, fs.pageSize);
@@ -235,7 +236,14 @@ int main(void) {
     display_cache(fs);
     storfs_mkdir(&fs, "C:/Testing12");
     display_cache(fs);
+    printf("Next Open Byte %d", fs.cachedInfo.nextOpenByte);
 
-    storfs_mount(&fs, "");*/
+    for(int i = 21; i < 30; i++)
+    {
+      location.pageLoc = i;
+      storfs_display_header(&fs, location);
+    }
+
+    storfs_mount(&fs, "");
   return 1;
 }

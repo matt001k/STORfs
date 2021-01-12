@@ -63,13 +63,15 @@
                                                             STORFS_FRAGMENT_LOC_SIZE + STORFS_FILE_SIZE + \
                                                             STORFS_CRC_SIZE + STORFS_MAX_FILE_NAME)
 
-#define STORFS_INFO_REG_NOT_FRAGMENT_BIT                        (0X1 << 7)
+/** @brief File Info Register Bit Definitions */
+#define STORFS_INFO_REG_NOT_FRAGMENT_BIT                    (0X1 << 7)
 #define STORFS_INFO_REG_BLOCK_SIGN_EMPTY                    (0X3 << 5)
 #define STORFS_INFO_REG_BLOCK_SIGN_PART_FULL                (0X2 << 5)
 #define STORFS_INFO_REG_BLOCK_SIGN_FULL                     (0X1 << 5)
 #define STORFS_INFO_REG_FILE_TYPE_FILE                      (0X3 << 2)
 #define STORFS_INFO_REG_FILE_TYPE_DIRECTORY                 (0X2 << 2)
 #define STORFS_INFO_REG_FILE_TYPE_ROOT                      (0X1 << 2)
+#define STORFS_INFO_REG_FILE_TYPE_FILE_FRAGMENT             (0X0 << 2)
 
 
 /** @brief Alias for size in bytes of items */ 

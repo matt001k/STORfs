@@ -206,16 +206,6 @@ static void info_to_buf(uint8_t *buf, storfs_file_header_t *storfsInfo)
     }
 #endif
 
-static void file_header_update_sibling(storfs_size_t siblingLoc, storfs_file_header_t *storfsInfo)
-{
-    storfsInfo->siblingLocation = siblingLoc;
-}
-
-static void file_header_update_child(storfs_size_t childLoc, storfs_file_header_t *storfsInfo)
-{
-    storfsInfo->childLocation = childLoc;
-}
-
 static storfs_err_t file_header_create_helper(storfs_t *storfsInst, storfs_file_header_t *storfsInfo, storfs_loc_t storfsLoc, const char *string)
 {
     storfs_err_t status = STORFS_OK;
@@ -282,6 +272,7 @@ static storfs_err_t find_next_open_byte_helper (storfs_t *storfsInst, storfs_loc
     storfs_file_header_t nextHeaderInfo;
     nextHeaderInfo.fragmentLocation = 0;
     nextHeaderInfo.fileInfo = 0x80;
+
     //Determine where the next open byte within the system is
     while(nextHeaderInfo.fragmentLocation != 0xFFFFFFFFFFFFFFFF || nextHeaderInfo.siblingLocation != 0xFFFFFFFFFFFFFFFF || \
     nextHeaderInfo.childLocation != 0xFFFFFFFFFFFFFFFF || nextHeaderInfo.fileInfo != 0xFF)
@@ -359,28 +350,28 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
             //Does the current file header name equal to the name in the path?
             if(strcmp((const char *)currentDirInfo.fileName, (const char *)currentFileName) == 0)
             {
+                //If the filename is matched it is a parent directory, update the previous file information with the current
+                LOGD(TAG, "File name matched: %s", currentFileName);
+
+                 if(pathFlag == PATH_LAST)
+                {
+                    break;
+                }
+
                 //If there is no child location update the child's location to the next open byte
                 if(currentDirInfo.childLocation == 0x0)
                 {
                     currentDirInfo.childLocation = storfsInst->cachedInfo.nextOpenByte;
                 }
-                //If the filename is matched it is a parent directory, update the previous file information with the current
-                LOGD(TAG, "File name matched: %s", currentFileName);
+
                 previousFile.fileLoc = currentLocation;
                 previousFile.fileInfo = currentDirInfo;
+                previousFile.filePrevFlags = STORFS_FILE_PARENT_FLAG;
 
                 //Continue to search the child's location if it is not the last line throughout the path
-                if(pathFlag == PATH_LAST)
-                {
-                    break;
-                }
-                else
-                {
-                    previousFile.filePrevFlags = STORFS_FILE_PARENT_FLAG;
-                    previousFile.filePrevLoc = currentLocation;
-                    currentLocation.pageLoc = LOCATION_TO_PAGE(currentDirInfo.childLocation, storfsInst);
-                    currentLocation.byteLoc = LOCATION_TO_BYTE(currentDirInfo.childLocation, storfsInst);
-                }
+                previousFile.filePrevLoc = currentLocation;
+                currentLocation.pageLoc = LOCATION_TO_PAGE(currentDirInfo.childLocation, storfsInst);
+                currentLocation.byteLoc = LOCATION_TO_BYTE(currentDirInfo.childLocation, storfsInst);
             }
             else if (currentDirInfo.siblingLocation != 0xFFFFFFFFFFFFFFFF)
             {
@@ -457,28 +448,50 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                 }
                 else
                 {
-                    uint8_t siblingBuf[storfsInst->pageSize];
-                    uint8_t updatedHeader[STORFS_HEADER_TOTAL_SIZE];
-
-                    storfs_fgets(storfsInst, (char *)siblingBuf, storfsInst->pageSize, &previousFile);
                     previousFile.fileInfo.siblingLocation = BYTEPAGE_TO_LOCATION(currentLocation.byteLoc, currentLocation.pageLoc, storfsInst);
-                    info_to_buf(updatedHeader, &previousFile.fileInfo);
-                    for(int i = 0; i < storfsInst->pageSize; i++)
+                    //If the previous file is a directory simply update the header, if not read in the data of the original file page and update the page with a new header
+                    if((previousFile.fileInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
                     {
-                        if(i < STORFS_HEADER_TOTAL_SIZE)
+                        if(file_header_create_helper(storfsInst, &previousFile.fileInfo, previousFile.fileLoc, "") != STORFS_OK)
                         {
-                            siblingBuf[i] = updatedHeader[i];
-                        }
-                        else
-                        {
-                            siblingBuf[i] = siblingBuf[i - STORFS_HEADER_TOTAL_SIZE];
+                            return STORFS_ERROR;
                         }
                     }
-                    if(storfsInst->prog(storfsInst, previousFile.fileLoc.pageLoc, previousFile.fileLoc.byteLoc, siblingBuf, storfsInst->pageSize) != STORFS_OK)
+                    else
                     {
-                        return STORFS_WRITE_FAILED;
+                        //Update the header at the previous location by re-writting the whole page
+                        uint8_t siblingBuf[storfsInst->pageSize];
+                        uint8_t updatedHeader[STORFS_HEADER_TOTAL_SIZE];
+
+                        LOGD(TAG, "Updating Previous File Sibling Location at the file's initial location at %ld%ld, %d", (uint32_t)(previousFile.fileLoc.pageLoc >> 32), (uint32_t)(previousFile.fileLoc.pageLoc), 0);
+
+                        //Store the data from the page
+                        if(storfsInst->read(storfsInst, previousFile.fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, siblingBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
+                        {
+                            return STORFS_READ_FAILED;
+                        }
+
+                        //Turn the header and stored data into a programmable buffer
+                        info_to_buf(updatedHeader, &previousFile.fileInfo);
+                        for(int i = 0; i < storfsInst->pageSize; i++)
+                        {
+                            if(i < STORFS_HEADER_TOTAL_SIZE)
+                            {
+                                siblingBuf[i] = updatedHeader[i];
+                            }
+                            else
+                            {
+                                siblingBuf[i] = siblingBuf[i - STORFS_HEADER_TOTAL_SIZE];
+                            }
+                        }
+                        if(storfsInst->prog(storfsInst, previousFile.fileLoc.pageLoc, previousFile.fileLoc.byteLoc, siblingBuf, storfsInst->pageSize) != STORFS_OK)
+                        {
+                            return STORFS_WRITE_FAILED;
+                        }
                     }
                 }
+
+                
 
                 //Create the header for the new file/directory
                 if(file_header_create_helper(storfsInst, &currentDirInfo, currentLocation, "") != STORFS_OK)
@@ -506,7 +519,6 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
         //If the file was just created and file action is FILE_OPEN ensure that the current location is used as the previous location
         previousFile.fileLoc = currentLocation;
         previousFile.fileInfo = currentDirInfo;
-
         *(STORFS_FILE *)buff = previousFile;
     }
 
@@ -517,7 +529,7 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
 {
     STORFS_FILE newOpenFile = *currentOpenFile;
 
-    //Remove the file since it exists
+    //Remove the file since it exists 
     if(storfs_rm(storfsInst, pathToFile, &newOpenFile) != STORFS_OK)
     {
         LOGE(TAG, "Cannot delete the old file");
@@ -794,32 +806,47 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
     if(stream->fileFlags & STORFS_FILE_APPEND_FLAG)
     {
-        updatedFileSize = stream->fileInfo.fileSize + n + ((n / storfsInst->pageSize) * STORFS_HEADER_TOTAL_SIZE);
+        //Update the file size of the main header
+        updatedFileSize = stream->fileInfo.fileSize + n + ((n / (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) * STORFS_HEADER_TOTAL_SIZE);
+
+        //Store the current header
         currHeaderInfo = stream->fileInfo;
+        file_info_display_helper(currHeaderInfo);
+
         //Update the file size register in the header of the file
         currHeaderInfo.fileSize = updatedFileSize;
-        storfsInst->read(storfsInst, currDataHeaderLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, currDataBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE));
+        if(storfsInst->read(storfsInst, currDataHeaderLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, currDataBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
+        {
+            return STORFS_READ_FAILED;
+        }
         info_to_buf(sendBuf, &currHeaderInfo);
         for(int i = STORFS_HEADER_TOTAL_SIZE; i < storfsInst->pageSize; i++)
         {
             sendBuf[i] = currDataBuf[i - STORFS_HEADER_TOTAL_SIZE];
         }
-        storfsInst->prog(storfsInst, currDataHeaderLoc.pageLoc, 0, sendBuf, storfsInst->pageSize);
+        if(storfsInst->prog(storfsInst, currDataHeaderLoc.pageLoc, 0, sendBuf, storfsInst->pageSize) != STORFS_OK)
+        {
+            return STORFS_WRITE_FAILED;
+        }
 
         currDataHeaderLoc.byteLoc = 0;
         while(currHeaderInfo.fragmentLocation != 0x00)
         {
             currDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(currHeaderInfo.fragmentLocation, storfsInst);
-            file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Append Find");
+            file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Append");
         }
-        appendHeaderByteLoc = (stream->fileInfo.fileSize % storfsInst->pageSize);
-        storfsInst->read(storfsInst, currDataHeaderLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, currDataBuf, appendHeaderByteLoc);
+        appendHeaderByteLoc = (stream->fileInfo.fileSize % storfsInst->pageSize) - STORFS_HEADER_TOTAL_SIZE;
+        if(storfsInst->read(storfsInst, currDataHeaderLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, currDataBuf, appendHeaderByteLoc) != STORFS_OK)
+        {
+            return STORFS_READ_FAILED;
+        }
         count+=appendHeaderByteLoc;
         LOGD(TAG, "File Location: %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)currDataHeaderLoc.pageLoc, appendHeaderByteLoc);
     }
     else
     {
-        updatedFileSize = STORFS_HEADER_TOTAL_SIZE + n + ((n / storfsInst->pageSize) * STORFS_HEADER_TOTAL_SIZE);
+        //Update the file size register
+        updatedFileSize = STORFS_HEADER_TOTAL_SIZE + n + ((n / (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) * STORFS_HEADER_TOTAL_SIZE);
     
         //Store the current header so it may be updated when initially writting to memory
         file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Write Function");
@@ -898,6 +925,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
                 sendBuf[i] = str[i - STORFS_HEADER_TOTAL_SIZE - appendHeaderByteLoc];
             }
         }
+        
 
         //If the programming functionality fails return an error
         if(storfsInst->prog(storfsInst, currDataHeaderLoc.pageLoc, currDataHeaderLoc.byteLoc, (uint8_t *)sendBuf, sendDataLen) != STORFS_OK)
@@ -934,9 +962,9 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     file_header_store_helper(storfsInst,  &stream->fileInfo, stream->fileLoc, "Updated FILE");
     
     //Find and update the next open byte available if the next open byte is currently larger than the file's location
-    if(storfsInst->cachedInfo.nextOpenByte >= BYTEPAGE_TO_LOCATION(stream->fileLoc.byteLoc, stream->fileLoc.pageLoc, storfsInst))
+    if(storfsInst->cachedInfo.nextOpenByte <= BYTEPAGE_TO_LOCATION(currDataHeaderLoc.byteLoc, currDataHeaderLoc.pageLoc, storfsInst))
     {
-        currDataHeaderLoc.byteLoc = storfsInst->firstByteLoc;
+        currDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(storfsInst->cachedInfo.nextOpenByte, storfsInst);
         find_update_next_open_byte(storfsInst, currDataHeaderLoc);
     } 
 
@@ -1065,38 +1093,70 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
         }
     } while (delDataItr > 0);
 
+    //Store the previous header and manipulate it
+    storfs_file_header_t storfsPreviousHeader;
+    file_header_store_helper(storfsInst, &storfsPreviousHeader, rmStream.filePrevLoc, "Previous");
+
     //Update the child or sibling directory of the previous file location
     if(rmStream.filePrevFlags == STORFS_FILE_PARENT_FLAG)
     {
-        //If the current file being deleted has a sibling, update the previous register's sibling with the current registers sibling
-        if(rmStream.fileInfo.siblingLocation != 0x00)
+        storfsPreviousHeader.childLocation = rmStream.fileInfo.siblingLocation;
+        if(file_header_create_helper(storfsInst, &storfsPreviousHeader, rmStream.filePrevLoc, "") != STORFS_OK)
         {
-            file_header_update_child(rmStream.fileInfo.siblingLocation, &rmStream.fileInfo);
+            return STORFS_ERROR;
         }
-        else
-        {
-            file_header_update_child(0x00, &rmStream.fileInfo);
-        } 
     }
     else
     {
         //If the current file being deleted has a sibling, update the previous register's sibling with the current registers sibling
-        if(rmStream.fileInfo.siblingLocation != 0x00)
+        storfsPreviousHeader.siblingLocation = rmStream.fileInfo.siblingLocation;
+
+         //If the previous file is a directory simply update the header, if not read in the data of the original file page and update the page with a new header
+        if((storfsPreviousHeader.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
         {
-            file_header_update_sibling(rmStream.fileInfo.siblingLocation, &rmStream.fileInfo);//Todo change to previous file
+            if(file_header_create_helper(storfsInst, &storfsPreviousHeader, rmStream.filePrevLoc, "") != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
         }
         else
         {
-            file_header_update_sibling(0x00, &rmStream.fileInfo);
-        }     
+            uint8_t siblingBuf[storfsInst->pageSize];
+            uint8_t updatedHeader[STORFS_HEADER_TOTAL_SIZE];
+
+            LOGD(TAG, "Updating Previous File Sibling Location at the file's initial location at %ld%ld, %d", (uint32_t)(rmStream.filePrevLoc.pageLoc >> 32), (uint32_t)(rmStream.filePrevLoc.pageLoc), 0);
+
+            if(storfsInst->read(storfsInst, rmStream.fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, siblingBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
+            {
+                return STORFS_READ_FAILED;
+            }
+
+
+            info_to_buf(updatedHeader, &storfsPreviousHeader);
+            for(int i = 0; i < storfsInst->pageSize; i++)
+            {
+                if(i < STORFS_HEADER_TOTAL_SIZE)
+                {
+                    siblingBuf[i] = updatedHeader[i];
+                }
+                else
+                {
+                    siblingBuf[i] = siblingBuf[i - STORFS_HEADER_TOTAL_SIZE];
+                }
+            }
+            if(storfsInst->prog(storfsInst, rmStream.filePrevLoc.pageLoc, 0, siblingBuf, storfsInst->pageSize) != STORFS_OK)
+            {
+                return STORFS_WRITE_FAILED;
+            }
+        }
     }
-    
+
     //Update the next open byte to the file that was deleted if the next open byte is currently larger than the files location
     if(storfsInst->cachedInfo.nextOpenByte >= BYTEPAGE_TO_LOCATION(rmStream.fileLoc.byteLoc, rmStream.fileLoc.pageLoc, storfsInst))
     {
         update_root_next_open_byte(storfsInst, BYTEPAGE_TO_LOCATION(rmStream.fileLoc.byteLoc, rmStream.fileLoc.pageLoc, storfsInst));
     }
-
+    
     //Set the file flag to deleted
     stream->fileFlags = STORFS_FILE_DELETED_FLAG;
     stream->fileInfo.childLocation = 0;
