@@ -29,6 +29,7 @@ typedef enum {
     PATH_LEFT,
 } path_flag_t;
 
+/** @brief Flags used for FILE struct */
 #define STORFS_FILE_WRITE_FLAG                  0x01
 #define STORFS_FILE_READ_FLAG                   0x02
 #define STORFS_FILE_APPEND_FLAG                 0x04
@@ -71,8 +72,62 @@ typedef enum {
         
 #endif
 
-
 static const char* TAG = "STORfs";
+
+/** @brief Used to compare crc code from a file and a buffer */
+static storfs_err_t crc_compare(storfs_t *storfsInst, storfs_file_header_t storfsInfo, const uint8_t *buf, uint32_t bufLen);
+static storfs_err_t crc_header_check(storfs_t *storfsInst, storfs_loc_t storfsLoc);
+
+/** @brief Functions to turn a uint8_t buffer to proper struct used by the file header */
+static uint16_t uint8_t_to_uint16_t(uint8_t *buf, uint32_t *index);
+static uint32_t uint8_t_to_uint32_t(uint8_t *buf, uint32_t *index);
+static uint64_t uint8_t_to_uint64_t(uint8_t *buf, uint32_t *index);
+static void buf_to_info(uint8_t *buf, storfs_file_header_t *storfsInfo);
+
+/** @brief Functions to turn file header into a writeable buffer */
+static void uint16_t_to_uint8_t(uint8_t *buf, uint16_t uint16Val, uint32_t *index);
+static void uint32_t_to_uint8_t(uint8_t *buf, uint32_t uint32Val, uint32_t *index);
+static void uint64_t_to_uint8_t(uint8_t *buf, uint64_t uint64Val, uint32_t *index);
+static void info_to_buf(uint8_t *buf, storfs_file_header_t *storfsInfo);
+
+/** @brief Header creation/storage/display functions */
+static storfs_err_t file_header_create_helper(storfs_t *storfsInst, storfs_file_header_t *storfsInfo, storfs_loc_t storfsLoc, const char *string);
+static storfs_err_t file_header_store_helper(storfs_t *storfsInst, storfs_file_header_t *storfsInfo, storfs_loc_t storfsLoc, const char *string);
+static void file_info_display_helper(storfs_file_header_t storfsInfo);
+
+/** @brief Functions to find the next available page to write to and to update the next available byte for the user cache */
+static void update_root_next_open_byte(storfs_t *storfsInst, storfs_size_t fileLocation);
+static storfs_err_t find_next_open_byte_helper (storfs_t *storfsInst, storfs_loc_t *storfsLoc);
+
+/** @brief Function to handle opening/creating new files, most important function of STORfs */
+static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pathToDir, file_action_t actionFlag, void *buff);
+
+/** @brief File open helper function for w or w+ modes */
+static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *currentOpenFile);
+
+static storfs_err_t crc_compare(storfs_t *storfsInst, storfs_file_header_t storfsInfo, const uint8_t *buf, uint32_t bufLen)
+{
+    if(storfsInfo.crc == (STORFS_CRC_CALC(storfsInst, buf, bufLen)))
+    {
+        LOGD(TAG, "CRC Code Correct");
+        return STORFS_OK;
+    }
+
+    LOGE(TAG, "CRC Code Returned Incorrectly");
+    return STORFS_CRC_ERR;
+}
+
+static storfs_err_t crc_header_check(storfs_t *storfsInst, storfs_loc_t storfsLoc)
+{
+    storfs_file_header_t storfsInfo;
+    uint32_t strLen = 0;
+
+    file_header_store_helper(storfsInst, &storfsInfo, storfsLoc, "CRC Check");
+
+    while(storfsInfo.fileName[strLen++] != '\0');
+
+    return crc_compare(storfsInst, storfsInfo, (uint8_t *)storfsInfo.fileName, strLen);
+}
 
 static uint16_t uint8_t_to_uint16_t(uint8_t *buf, uint32_t *index)
 {
@@ -199,11 +254,6 @@ static void info_to_buf(uint8_t *buf, storfs_file_header_t *storfsInfo)
         storfsInfo.reserved, (uint32_t)(storfsInfo.fragmentLocation >> 32), (uint32_t)storfsInfo.fragmentLocation, \
         storfsInfo.fileSize, storfsInfo.crc);
     }
-#else
-    static void file_info_display_helper(storfs_file_header_t storfsInfo)
-    {
-
-    }
 #endif
 
 static storfs_err_t file_header_create_helper(storfs_t *storfsInst, storfs_file_header_t *storfsInfo, storfs_loc_t storfsLoc, const char *string)
@@ -222,7 +272,7 @@ static storfs_err_t file_header_create_helper(storfs_t *storfsInst, storfs_file_
     LOGD(TAG, "Writing %s Header at %ld%ld, %ld", string, (uint32_t)(storfsLoc.pageLoc >> 32), \
                 (uint32_t)(storfsLoc.pageLoc),  storfsLoc.byteLoc);
     info_to_buf(headerBuf, storfsInfo);
-    if(storfsInst->prog(storfsInst, storfsLoc.pageLoc, storfsLoc.byteLoc, headerBuf, STORFS_HEADER_TOTAL_SIZE) != STORFS_OK)
+    if(storfsInst->write(storfsInst, storfsLoc.pageLoc, storfsLoc.byteLoc, headerBuf, STORFS_HEADER_TOTAL_SIZE) != STORFS_OK)
     {
         status = STORFS_WRITE_FAILED;
         goto FUNEND;
@@ -293,6 +343,7 @@ static storfs_err_t find_next_open_byte_helper (storfs_t *storfsInst, storfs_loc
 
 static storfs_err_t find_update_next_open_byte(storfs_t *storfsInst, storfs_loc_t storfsLoc)
 {
+    LOGD(TAG, "Finding and updating next open byte");
     if(find_next_open_byte_helper(storfsInst, &storfsLoc) != STORFS_OK)
     {
         return STORFS_ERROR;
@@ -419,7 +470,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                 currentDirInfo.fragmentLocation = 0;
 
                 //Compute CRC of the filename given
-                currentDirInfo.crc = STORFS_CRC_CALC(storfsInst, currentDirInfo.fileName, currStr);
+                currentDirInfo.crc = STORFS_CRC_CALC(storfsInst, currentDirInfo.fileName, (currStr+1));
 
                 //If the file size will be the size of the page size, ensure the file info sets the information for the file to full
                 if(actionFlag == DIR_CREATE)
@@ -429,12 +480,6 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                 else
                 {
                     currentDirInfo.fileInfo = STORFS_INFO_REG_FILE_TYPE_FILE | STORFS_INFO_REG_BLOCK_SIGN_PART_FULL;
-                }
-
-                //Determine the next open byte for the cache
-                if(find_update_next_open_byte(storfsInst, currentLocation) != STORFS_OK)
-                {
-                    return STORFS_ERROR;
                 }
 
                 //Determine whether the previous file's child location or sibling location register has to be updated
@@ -484,23 +529,35 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                                 siblingBuf[i] = siblingBuf[i - STORFS_HEADER_TOTAL_SIZE];
                             }
                         }
-                        if(storfsInst->prog(storfsInst, previousFile.fileLoc.pageLoc, previousFile.fileLoc.byteLoc, siblingBuf, storfsInst->pageSize) != STORFS_OK)
+                        if(storfsInst->write(storfsInst, previousFile.fileLoc.pageLoc, previousFile.fileLoc.byteLoc, siblingBuf, storfsInst->pageSize) != STORFS_OK)
                         {
                             return STORFS_WRITE_FAILED;
                         }
                     }
                 }
 
-                
-
-                //Create the header for the new file/directory
-                if(file_header_create_helper(storfsInst, &currentDirInfo, currentLocation, "") != STORFS_OK)
+                while(1)
                 {
-                    return STORFS_ERROR;
+                    //Create the header for the new file/directory
+                    if(file_header_create_helper(storfsInst, &currentDirInfo, currentLocation, "") != STORFS_OK)
+                    {
+                        return STORFS_ERROR;
+                    }
+                    if(crc_header_check(storfsInst, currentLocation) == STORFS_OK)
+                    {
+                        break;
+                    }
+                    find_next_open_byte_helper(storfsInst, &currentLocation);
                 }
 
                 //Display the newly created file information
                 file_info_display_helper(currentDirInfo);
+
+                //Determine the next open byte for the cache
+                if(find_update_next_open_byte(storfsInst, currentLocation) != STORFS_OK)
+                {
+                    return STORFS_ERROR;
+                }
                 break;
             }
         } while(previousFile.filePrevFlags == STORFS_FILE_SIBLING_FLAG);
@@ -535,6 +592,7 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
         LOGE(TAG, "Cannot delete the old file");
         return STORFS_ERROR;
     }
+    
     //Recreate file header
     if(file_header_create_helper(storfsInst, &currentOpenFile->fileInfo, currentOpenFile->fileLoc, "Deleting old file and opening new") != STORFS_OK)
     {
@@ -551,21 +609,10 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
     return STORFS_OK;
 }
 
-static storfs_err_t crc_compare(storfs_t *storfsInst, storfs_file_header_t storfsInfo, const uint8_t *buf, uint32_t bufLen)
-{
-    if(storfsInfo.crc == (STORFS_CRC_CALC(storfsInst, buf, bufLen)))
-    {
-        LOGD(TAG, "CRC Code Correct");
-        return STORFS_OK;
-    }
-
-    LOGE(TAG, "CRC Code Returned Incorrectly");
-    return STORFS_CRC_ERR;
-}
-
 storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
 {
     storfs_file_header_t firstPartInfo[2];
+    uint32_t strLen = 0;
 
     LOGI(TAG, "Mounting File System");
 
@@ -593,15 +640,21 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
     //If file is empty create the root partition within the user defined parameters
     //The system will use two headers for the root
     if(((firstPartInfo[0].fileInfo & STORFS_INFO_REG_BLOCK_SIGN_EMPTY) == 0x60) || ((firstPartInfo[1].fileInfo & STORFS_INFO_REG_BLOCK_SIGN_EMPTY) == 0x60))
-    {
-        uint32_t strLen = 0;
-        
+    {        
         //Set next open byte
         storfsInst->cachedInfo.nextOpenByte = ((storfsInst->cachedInfo.rootLocation[1].pageLoc + 1) * storfsInst->pageSize);
 
         //Get string length
         while(partName[strLen++] != '\0');
 
+        //Error checking
+        if(strLen == 0 || (storfsInst->cachedInfo.nextOpenByte >= (storfsInst->pageCount * storfsInst->pageSize)))
+        {
+            LOGE(TAG, "STORfs cannot be mounted");
+            return STORFS_ERROR;
+        }
+
+        //Store file parameters
         for(int i = 0; i < strLen; i++)
         {
             firstPartInfo[0].fileName[i] = partName[i];
@@ -612,7 +665,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         firstPartInfo[0].reserved = 0xFFFF;
         firstPartInfo[0].fragmentLocation = storfsInst->cachedInfo.nextOpenByte;
         firstPartInfo[0].fileSize = STORFS_HEADER_TOTAL_SIZE * 2;
-        firstPartInfo[0].crc = STORFS_CRC_CALC(storfs, firstPartInfo[0].fileName, STORFS_MAX_FILE_NAME);
+        firstPartInfo[0].crc = STORFS_CRC_CALC(storfs, firstPartInfo[0].fileName, strLen);
         firstPartInfo[1] = firstPartInfo[0];
 
         //Write data to first available memory location defined by user
@@ -627,7 +680,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         file_info_display_helper(firstPartInfo[0]);
 
         //Compare the CRC obtained from the file to the computed crc of the filename
-        if(crc_compare(storfsInst, firstPartInfo[0], firstPartInfo[0].fileName, STORFS_MAX_FILE_NAME) != STORFS_OK)
+        if(crc_compare(storfsInst, firstPartInfo[0], firstPartInfo[0].fileName, strLen) != STORFS_OK)
         {
             return STORFS_ERROR;
         }
@@ -644,7 +697,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         file_info_display_helper(firstPartInfo[1]);
 
         //Compare the CRC obtained from the file to the computed crc of the filename
-        if(crc_compare(storfsInst, firstPartInfo[1], firstPartInfo[1].fileName, STORFS_MAX_FILE_NAME) != STORFS_OK)
+        if(crc_compare(storfsInst, firstPartInfo[1], firstPartInfo[1].fileName, strLen) != STORFS_OK)
         {
             return STORFS_ERROR;
         }
@@ -654,14 +707,22 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         storfsInst->cachedInfo.rootHeaderInfo[1] = firstPartInfo[1];
     }
     else
-    {
-        if(crc_compare(storfsInst, firstPartInfo[0], firstPartInfo[0].fileName, STORFS_MAX_FILE_NAME) != STORFS_OK)
+    {        
+        //Get string length
+        while(firstPartInfo[0].fileName[strLen++] != '\0');
+
+        //Compare the CRC code to the register code
+        if(crc_compare(storfsInst, firstPartInfo[0], firstPartInfo[0].fileName, strLen) != STORFS_OK)
         {
             return STORFS_ERROR;
         }
         
+        //Get string length
+        strLen = 0;
+        while(firstPartInfo[1].fileName[strLen++] != '\0');
         
-        if(crc_compare(storfsInst, firstPartInfo[1], firstPartInfo[1].fileName, STORFS_MAX_FILE_NAME) != STORFS_OK)
+        //Compare the CRC code to the register code
+        if(crc_compare(storfsInst, firstPartInfo[1], firstPartInfo[1].fileName, strLen) != STORFS_OK)
         {
             return STORFS_ERROR;
         }
@@ -824,7 +885,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         {
             sendBuf[i] = currDataBuf[i - STORFS_HEADER_TOTAL_SIZE];
         }
-        if(storfsInst->prog(storfsInst, currDataHeaderLoc.pageLoc, 0, sendBuf, storfsInst->pageSize) != STORFS_OK)
+        if(storfsInst->write(storfsInst, currDataHeaderLoc.pageLoc, 0, sendBuf, storfsInst->pageSize) != STORFS_OK)
         {
             return STORFS_WRITE_FAILED;
         }
@@ -928,7 +989,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         
 
         //If the programming functionality fails return an error
-        if(storfsInst->prog(storfsInst, currDataHeaderLoc.pageLoc, currDataHeaderLoc.byteLoc, (uint8_t *)sendBuf, sendDataLen) != STORFS_OK)
+        if(storfsInst->write(storfsInst, currDataHeaderLoc.pageLoc, currDataHeaderLoc.byteLoc, (uint8_t *)sendBuf, sendDataLen) != STORFS_OK)
         {
             LOGE(TAG, "Writing to memory failed in function fputs");
             return STORFS_WRITE_FAILED;
@@ -964,7 +1025,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     //Find and update the next open byte available if the next open byte is currently larger than the file's location
     if(storfsInst->cachedInfo.nextOpenByte <= BYTEPAGE_TO_LOCATION(currDataHeaderLoc.byteLoc, currDataHeaderLoc.pageLoc, storfsInst))
     {
-        currDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(storfsInst->cachedInfo.nextOpenByte, storfsInst);
+        currDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(storfsInst->cachedInfo.nextOpenByte, storfsInst) - 1;
         find_update_next_open_byte(storfsInst, currDataHeaderLoc);
     } 
 
@@ -1144,7 +1205,7 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
                     siblingBuf[i] = siblingBuf[i - STORFS_HEADER_TOTAL_SIZE];
                 }
             }
-            if(storfsInst->prog(storfsInst, rmStream.filePrevLoc.pageLoc, 0, siblingBuf, storfsInst->pageSize) != STORFS_OK)
+            if(storfsInst->write(storfsInst, rmStream.filePrevLoc.pageLoc, 0, siblingBuf, storfsInst->pageSize) != STORFS_OK)
             {
                 return STORFS_WRITE_FAILED;
             }

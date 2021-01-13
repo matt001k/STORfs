@@ -170,7 +170,7 @@ typedef struct storfs{
      * @param       size        Size of the data to be sent
      * @return      STORFS_OK   Succeed
      */
-    storfs_err_t (*prog)(const struct storfs *storfsInst, storfs_page_t page,
+    storfs_err_t (*write)(const struct storfs *storfsInst, storfs_page_t page,
             storfs_byte_t byte, uint8_t *buffer, storfs_size_t size);
 
     /**

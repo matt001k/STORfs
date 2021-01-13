@@ -73,7 +73,7 @@ int main(void) {
 
     storfs_t fs = {
       .read = storfs_read,
-      .prog = storfs_write,
+      .write = storfs_write,
       .erase = storfs_erase,
       .sync = storfs_sync,
       .memInst = NULL,
@@ -94,12 +94,12 @@ int main(void) {
     //Test making a directory out of a file
     storfs_mkdir(&fs, "C:/Hello.txt");
     display_cache(fs);
-    
+
     //Test making directories
     storfs_mkdir(&fs, "C:/HelloDere");
     storfs_mkdir(&fs, "C:/HelloDere/xyz");
     display_cache(fs);
-
+    
     //Test opening and creating files
     STORFS_FILE file1;
     file1 = storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+");
