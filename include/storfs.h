@@ -227,13 +227,51 @@ typedef struct storfs{
 
 } storfs_t;
 
+
+ /**
+     * @brief       Mount File System
+     *              Used to mount the file system in order to correctly read/write files
+     *
+     * @attention   When first calling storfs_mount, a name must be used for the partition 
+     *              ex: C:
+     *              
+     * @param       storfsInst  Instance used for the STORfs
+     * @param       partName    Name of the root partition
+     * @return      STORFS_OK   Succeed
+     */
 storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName);
 
+/**
+     * @brief       mkdir
+     *              Used to make a directory within the file system
+     *
+     * @attention   A directory cannot have a file extension
+     * @attention   Multiple directories may be made at once
+     * @attention   The pathToDir must be a full path from the root to the current directory
+     *              
+     * @param       storfsInst  Instance used for the STORfs
+     * @param       pathToDir   Path to the directory from the root partition
+     * @return      STORFS_OK   Succeed
+*/
 storfs_err_t storfs_mkdir(storfs_t *storfsInst, char *pathToDir);
+
+/**
+     * @brief       touch
+     *              Used to make a file within the file system
+     *
+     * @attention   A single file may only be made at once
+     * @attention   The pathToDir must be a full path from the root to the current directory
+     *              
+     * @param       storfsInst  Instance used for the STORfs
+     * @param       pathToFile  Path to the file from the root partition
+     * @return      STORFS_OK   Succeed
+*/
 storfs_err_t storfs_touch(storfs_t *storfsInst, char *pathToFile);
 
+/** @brief Flags when opening up a file */ 
 typedef uint8_t storfs_file_flags_t;
 
+/** @brief FILE struct for saving data to when opening up a file */ 
 typedef struct storfs_fopen_file_info{
     storfs_file_header_t fileInfo;
     storfs_loc_t fileLoc;
@@ -242,10 +280,63 @@ typedef struct storfs_fopen_file_info{
     storfs_file_flags_t filePrevFlags;
 } STORFS_FILE;
 
+/**
+     * @brief       fopen
+     *              Used to make/open a file within the file system
+     *
+     * @attention   A single file may only be made at once
+     * @attention   The pathToDir must be a full path from the root to the current directory
+     * @attention   mode flags include:
+     *                  - w: write only and truncate existing file
+     *                  - w+: read/write and truncate existing file
+     *                  - r: read only
+     *                  - r+: read/write and truncate the existing file
+     *                  - a: write only and append existing file
+     *                  - a+: read/write and append existing file
+     *              
+     * @param       storfsInst  Instance used for the STORfs
+     * @param       pathToFile  Path to the file from the root partition
+     * @param       mode        Mode to open the file in
+     * @param       stream      File to save the file information from the function
+     * @return      STORFS_OK   Succeed
+*/
 STORFS_FILE storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode);
 
+/**
+     * @brief       fputs
+     *              Used to write to a file
+     *              
+     * @param       storfsInst  Instance used for the STORfs
+     * @param       str         data to write to the file
+     * @param       n           length of data to write to the file
+     * @param       stream      File to write to
+     * @return      STORFS_OK   Succeed
+*/
 storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, STORFS_FILE *stream);
+
+/**
+     * @brief       fgets
+     *              Used to read a file
+     *              
+     * @param       storfsInst  Instance used for the STORfs
+     * @param       str         data to read from the file
+     * @param       n           length of data to read from the file
+     * @param       stream      File to read from
+     * @return      STORFS_OK   Succeed
+*/
 storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *stream);
+
+/**
+     * @brief       rm
+     *              Used to remove a file
+     * 
+     * @attention   To remove a directory and all of its contents stream must be NULL
+     *              
+     * @param       storfsInst  Instance used for the STORfs
+     * @param       pathToFile  Path to the file from the root partition
+     * @param       stream      File to delete
+     * @return      STORFS_OK   Succeed
+*/
 storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream);
 
 

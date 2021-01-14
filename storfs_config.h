@@ -14,5 +14,7 @@
     //#define LOGE
 
 #define STORFS_LOG_DISPLAY_HEADER
+
+//#define STORFS_USE_CRC
    
 #endif

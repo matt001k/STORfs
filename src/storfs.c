@@ -77,6 +77,7 @@ static const char* TAG = "STORfs";
 /** @brief Used to compare crc code from a file and a buffer */
 static storfs_err_t crc_compare(storfs_t *storfsInst, storfs_file_header_t storfsInfo, const uint8_t *buf, uint32_t bufLen);
 static storfs_err_t crc_header_check(storfs_t *storfsInst, storfs_loc_t storfsLoc);
+static storfs_err_t crc_file_check(storfs_t *storfsInst, storfs_loc_t storfsLoc, uint32_t len);
 
 /** @brief Functions to turn a uint8_t buffer to proper struct used by the file header */
 static uint16_t uint8_t_to_uint16_t(uint8_t *buf, uint32_t *index);
@@ -127,6 +128,21 @@ static storfs_err_t crc_header_check(storfs_t *storfsInst, storfs_loc_t storfsLo
     while(storfsInfo.fileName[strLen++] != '\0');
 
     return crc_compare(storfsInst, storfsInfo, (uint8_t *)storfsInfo.fileName, strLen);
+}
+
+static storfs_err_t crc_file_check(storfs_t *storfsInst, storfs_loc_t storfsLoc, uint32_t len)
+{
+    storfs_file_header_t storfsInfo;
+    uint8_t buf[len];
+
+    file_header_store_helper(storfsInst, &storfsInfo, storfsLoc, "CRC Check");
+
+    if(storfsInst->read(storfsInst, storfsLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, buf, len) != STORFS_OK)
+    {
+        return STORFS_READ_FAILED;
+    }
+
+    return crc_compare(storfsInst, storfsInfo, buf, len);
 }
 
 static uint16_t uint8_t_to_uint16_t(uint8_t *buf, uint32_t *index)
@@ -862,8 +878,8 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     storfs_file_size_t updatedFileSize;                                       //Updated filesize to be written to the header
     storfs_file_header_t currHeaderInfo;                                      //Current Header's information
     
-    uint32_t appendHeaderByteLoc = 0;
-    uint8_t currDataBuf[storfsInst->pageSize];
+    uint32_t appendHeaderByteLoc = 0;                                         //Location of the data to be appended onto the current buffer
+    uint8_t currDataBuf[storfsInst->pageSize];                                //Buffer to send data in the case of an append 
 
     if(stream->fileFlags & STORFS_FILE_APPEND_FLAG)
     {
@@ -969,15 +985,10 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
         //Convert the current header info into a buffer and store it in the first bytes to be programmed
         //Store the data to be programmed as well in the buffer
-        info_to_buf(headerBuf, &currHeaderInfo);
-        for(int i = 0; i < sendDataLen; i++)
+        for(int i = STORFS_HEADER_TOTAL_SIZE; i < sendDataLen; i++)
         {
-            if(i < STORFS_HEADER_TOTAL_SIZE)
-            {
-                sendBuf[i] = headerBuf[i];
-            }
             //If there is items to append to the current buffer
-            else if(currItr == 0 && ((i - STORFS_HEADER_TOTAL_SIZE) < appendHeaderByteLoc))
+            if(currItr == 0 && ((i - STORFS_HEADER_TOTAL_SIZE) < appendHeaderByteLoc))
             {
                 sendBuf[i] = currDataBuf[i - STORFS_HEADER_TOTAL_SIZE];
             }
@@ -986,17 +997,35 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
                 sendBuf[i] = str[i - STORFS_HEADER_TOTAL_SIZE - appendHeaderByteLoc];
             }
         }
-        
 
-        //If the programming functionality fails return an error
-        if(storfsInst->write(storfsInst, currDataHeaderLoc.pageLoc, currDataHeaderLoc.byteLoc, (uint8_t *)sendBuf, sendDataLen) != STORFS_OK)
+        //Calculate CRC
+        currHeaderInfo.crc = STORFS_CRC_CALC(storfsInst, (uint8_t*)(sendBuf + STORFS_HEADER_TOTAL_SIZE), (sendDataLen - STORFS_HEADER_TOTAL_SIZE));
+
+        //Place Header into buffer
+        info_to_buf(headerBuf, &currHeaderInfo);
+        for(int i = 0; i < STORFS_HEADER_TOTAL_SIZE; i++)
         {
-            LOGE(TAG, "Writing to memory failed in function fputs");
-            return STORFS_WRITE_FAILED;
+            sendBuf[i] = headerBuf[i];
         }
-        if(storfsInst->sync(storfsInst) != STORFS_OK)
+
+        //Write to the area in memory and then check the crc and determine if that page in memory is worn/not usable
+        while(1)
         {
-            return STORFS_ERROR;
+            //If the programming functionality fails return an error
+            if(storfsInst->write(storfsInst, currDataHeaderLoc.pageLoc, currDataHeaderLoc.byteLoc, (uint8_t *)sendBuf, sendDataLen) != STORFS_OK)
+            {
+                LOGE(TAG, "Writing to memory failed in function fputs");
+                return STORFS_WRITE_FAILED;
+            }
+            if(storfsInst->sync(storfsInst) != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
+            if(crc_file_check(storfsInst, currDataHeaderLoc, (sendDataLen - STORFS_HEADER_TOTAL_SIZE)) == STORFS_OK)
+            {
+                break;
+            }
+            find_next_open_byte_helper(storfsInst, &currDataHeaderLoc);
         }
 
         //Decrement the number of iterations left
