@@ -101,7 +101,7 @@ int main(void) {
     display_cache(fs);
     
     //Test opening and creating files
-    STORFS_FILE file1;
+    
     file1 = storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+");
     storfs_touch(&fs, "C:/HelloDere/hello.txt");
     file1 = storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+");
@@ -238,12 +238,49 @@ int main(void) {
     display_cache(fs);
     printf("Next Open Byte %d", fs.cachedInfo.nextOpenByte);
 
+    storfs_mount(&fs, "");
+
+    //Test deleting a directory
+    storfs_rm(&fs, "C:/HelloDere", NULL);
+
     for(int i = 21; i < 30; i++)
     {
       location.pageLoc = i;
       storfs_display_header(&fs, location);
     }
 
-    storfs_mount(&fs, "");
+    //Test creating a directory with many files and then deleting it
+    storfs_mkdir(&fs, "C:/Testing");
+    file1 = storfs_fopen(&fs, "C:/Testing/12.txt", "r+");
+    file2 = storfs_fopen(&fs, "C:/Testing/123.txt", "a+");
+    file3 = storfs_fopen(&fs, "C:/Testing/1234.txt", "a+");
+    file4 = storfs_fopen(&fs, "C:/Testing/12345.txt", "w+");
+    storfs_fputs(&fs, loadBuffer, 256, &file1);
+    storfs_fputs(&fs, loadBuffer, 1024, &file2);
+    storfs_fputs(&fs, loadBuffer, 100, &file3);
+    storfs_fputs(&fs, loadBuffer, 512, &file4);
+    storfs_mkdir(&fs, "C:/Testing/TEST");
+    file1 = storfs_fopen(&fs, "C:/Testing/TEST/12.txt", "r+");
+    file2 = storfs_fopen(&fs, "C:/Testing/TEST/123.txt", "a+");
+    file3 = storfs_fopen(&fs, "C:/Testing/TEST/1234.txt", "a+");
+    file4 = storfs_fopen(&fs, "C:/Testing/TEST/12345.txt", "w+");
+    storfs_fputs(&fs, loadBuffer, 256, &file1);
+    storfs_fputs(&fs, loadBuffer, 1024, &file2);
+    storfs_fputs(&fs, loadBuffer, 100, &file3);
+    storfs_fputs(&fs, loadBuffer, 512, &file4);
+    storfs_mkdir(&fs, "C:/Testing/TEST/Pest");
+    file1 = storfs_fopen(&fs, "C:/Testing/TEST/Pest/12.txt", "r+");
+    file2 = storfs_fopen(&fs, "C:/Testing/TEST/Pest/123.txt", "a+");
+    storfs_fputs(&fs, loadBuffer, 256, &file1);
+    storfs_fputs(&fs, loadBuffer, 1024, &file2);
+    storfs_rm(&fs, "C:/Testing", NULL);
+
+    for(int i = 21; i < 35; i++)
+    {
+      location.pageLoc = i;
+      storfs_display_header(&fs, location);
+    }
+
+    
   return 1;
 }

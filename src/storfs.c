@@ -35,7 +35,6 @@ typedef enum {
 #define STORFS_FILE_APPEND_FLAG                 0x04
 #define STORFS_FILE_PARENT_FLAG                 0x0A
 #define STORFS_FILE_SIBLING_FLAG                0x0B
-#define STORFS_FILE_DELETED_FLAG                0x1F
 
 #ifdef STORFS_USE_CRC
     #define STORFS_CRC_CALC(storfsInst, buf, buflen)    \
@@ -105,6 +104,10 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
 
 /** @brief File open helper function for w or w+ modes */
 static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *currentOpenFile);
+
+/** @brief Helper functions to delete directories and files */
+static storfs_err_t file_delete_helper(storfs_t *storfsInst, storfs_loc_t storfsLoc, storfs_file_header_t storfsInfo);
+static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t rmParentLoc, storfs_file_header_t rmParentHeader);
 
 static storfs_err_t crc_compare(storfs_t *storfsInst, storfs_file_header_t storfsInfo, const uint8_t *buf, uint32_t bufLen)
 {
@@ -625,6 +628,93 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
     return STORFS_OK;
 }
 
+static storfs_err_t file_delete_helper(storfs_t *storfsInst, storfs_loc_t storfsLoc, storfs_file_header_t storfsInfo)
+{
+    int32_t delDataItr = 0;
+    storfs_loc_t delDataHeaderLoc = storfsLoc;            //Location of the file to be removed
+    storfs_file_header_t currHeaderInfo = storfsInfo;     //Information of the file to be removed
+
+    //Determine the number of iterations for deletion of files 
+    delDataItr = (storfsInfo.fileSize + storfsInst->pageSize) / storfsInst->pageSize;
+    delDataHeaderLoc.byteLoc = 0;
+
+    do
+    {
+        LOGD(TAG, "Deleting File/Fragment At %ld%ld, %ld", (uint32_t)(delDataHeaderLoc.pageLoc >> 32),(uint32_t)(delDataHeaderLoc.pageLoc),  delDataHeaderLoc.byteLoc);
+
+        //Erase the current page
+        if(storfsInst->erase(storfsInst, delDataHeaderLoc.pageLoc) != STORFS_OK)
+        {
+            LOGE(TAG, "Erasing page failed in function remove");
+            return STORFS_ERROR;
+        }
+
+        delDataItr--;
+        if(delDataItr > 0)
+        {
+            //Set the next location to what is in the erased page's header
+            delDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(currHeaderInfo.fragmentLocation, storfsInst);
+
+            //Store the next locations header information
+            if(file_header_store_helper(storfsInst, &currHeaderInfo, delDataHeaderLoc, "") != STORFS_OK)
+            {
+                LOGE(TAG, "Could not read from the current header");
+                return STORFS_ERROR;
+            }
+        }
+    } while (delDataItr > 0);
+
+    return STORFS_OK;
+}
+
+static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t rmParentLoc, storfs_file_header_t rmParentHeader)
+{
+    LOGI(TAG, "Deleting directory and all of it's containing files");
+
+    if(file_delete_helper(storfsInst, rmParentLoc, rmParentHeader) != STORFS_OK)
+    {
+        return STORFS_ERROR;
+    }
+     if(rmParentHeader.childLocation != 0x00)
+        {
+            storfs_file_header_t rmChildHeader;
+            storfs_loc_t rmChildFileLoc;
+            rmChildFileLoc.pageLoc = LOCATION_TO_PAGE(rmParentHeader.childLocation, storfsInst);
+            rmChildFileLoc.byteLoc = LOCATION_TO_BYTE(rmParentHeader.childLocation, storfsInst);
+
+            file_header_store_helper(storfsInst, &rmChildHeader, rmChildFileLoc, "Remove");
+            while(1)
+            {
+                if(rmChildHeader.childLocation != 0x00)
+                {
+                    if(directory_delete_helper(storfsInst, rmChildFileLoc, rmChildHeader) != STORFS_OK)
+                    {
+                        return STORFS_ERROR;
+                    }
+                    rmChildFileLoc.pageLoc = LOCATION_TO_PAGE(rmChildHeader.childLocation, storfsInst);
+                    rmChildFileLoc.byteLoc = LOCATION_TO_BYTE(rmChildHeader.childLocation, storfsInst);
+                }
+                else
+                {
+                    if(file_delete_helper(storfsInst, rmChildFileLoc, rmChildHeader) != STORFS_OK)
+                    {
+                        return STORFS_ERROR;
+                    }
+                    rmChildFileLoc.pageLoc = LOCATION_TO_PAGE(rmChildHeader.siblingLocation, storfsInst);
+                    rmChildFileLoc.byteLoc = LOCATION_TO_BYTE(rmChildHeader.siblingLocation, storfsInst);
+                }
+                if(rmChildHeader.siblingLocation == 0x00)
+                {
+                    break;
+                }
+                file_header_store_helper(storfsInst, &rmChildHeader, rmChildFileLoc, "Remove");
+                file_info_display_helper(rmChildHeader);
+            }
+        }
+       
+    return STORFS_OK;
+}
+
 storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
 {
     storfs_file_header_t firstPartInfo[2];
@@ -844,15 +934,9 @@ STORFS_FILE storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mo
 storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, STORFS_FILE *stream)
 {
     //Sanity Check
-    /*if(storfsInst == NULL || str == NULL || n = 0 || stream == NULL)
+    if(storfsInst == NULL || stream == NULL || str == NULL || n == 0 || stream == NULL)
     {
-        return STORFS_ERROR;
-    }*/
-
-    //If the file is deleted, return error
-    if(stream->fileFlags == STORFS_FILE_DELETED_FLAG)
-    {
-        LOGE(TAG, "Cannot write to file, it has been deleted");
+        LOGE(TAG, "Cannot write to file");
         return STORFS_ERROR;
     }
 
@@ -878,10 +962,16 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     storfs_file_size_t updatedFileSize;                                       //Updated filesize to be written to the header
     storfs_file_header_t currHeaderInfo;                                      //Current Header's information
     
-    uint32_t appendHeaderByteLoc = 0;                                         //Location of the data to be appended onto the current buffer
+    int32_t appendHeaderByteLoc = 0;                                          //Location of the data to be appended onto the current buffer
     uint8_t currDataBuf[storfsInst->pageSize];                                //Buffer to send data in the case of an append 
 
-    if(stream->fileFlags & STORFS_FILE_APPEND_FLAG)
+    //Get update file infor
+    if(file_header_store_helper(storfsInst, &stream->fileInfo, stream->fileLoc, "Updated") != STORFS_OK)
+    {
+        return STORFS_ERROR;
+    }
+
+    if(stream->fileFlags & STORFS_FILE_APPEND_FLAG && stream->fileInfo.fileSize > STORFS_HEADER_TOTAL_SIZE)
     {
         //Update the file size of the main header
         updatedFileSize = stream->fileInfo.fileSize + n + ((n / (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) * STORFS_HEADER_TOTAL_SIZE);
@@ -912,12 +1002,21 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
             currDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(currHeaderInfo.fragmentLocation, storfsInst);
             file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Append");
         }
+
+        //Append needed to write onto the current buffer length
         appendHeaderByteLoc = (stream->fileInfo.fileSize % storfsInst->pageSize) - STORFS_HEADER_TOTAL_SIZE;
+        if(appendHeaderByteLoc < 0)
+        {
+            appendHeaderByteLoc = 0;
+        }
+        count+=appendHeaderByteLoc;
+
+        //Read in the current header of the data buffer
         if(storfsInst->read(storfsInst, currDataHeaderLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, currDataBuf, appendHeaderByteLoc) != STORFS_OK)
         {
             return STORFS_READ_FAILED;
         }
-        count+=appendHeaderByteLoc;
+        
         LOGD(TAG, "File Location: %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)currDataHeaderLoc.pageLoc, appendHeaderByteLoc);
     }
     else
@@ -1065,7 +1164,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
 storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *stream)
 {
-    if(stream->fileFlags == STORFS_FILE_DELETED_FLAG)
+    if(stream == NULL)
     {
         LOGE(TAG, "Cannot read from file, it has been deleted");
         return STORFS_ERROR;
@@ -1137,52 +1236,48 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
 
 storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream)
 {
-    if(stream->fileFlags == STORFS_FILE_DELETED_FLAG)
+    //Error Checking
+    if(storfsInst == NULL || pathToFile == NULL)
     {
-        LOGE(TAG, "Cannot read from file, it has been deleted");
         return STORFS_ERROR;
     }
 
     STORFS_FILE rmStream;
-    LOGI(TAG, "Removing file %s", stream->fileInfo.fileName);
+    LOGI(TAG, "Removing file at %s", pathToFile);
 
     //Open the file again in order to find the current parent/sibling/children
-    file_handling_helper(storfsInst, (storfs_name_t *)pathToFile, FILE_OPEN, &rmStream);
-
-    int32_t delDataItr = 0;
-    storfs_loc_t delDataHeaderLoc = rmStream.fileLoc;            //Location of the file to be removed
-    storfs_file_header_t currHeaderInfo = rmStream.fileInfo;     //Information of the file to be removed
-
-    //Determine the number of iterations for deletion of files 
-    delDataItr = (rmStream.fileInfo.fileSize + storfsInst->pageSize) / storfsInst->pageSize;
-    delDataHeaderLoc.byteLoc = 0;
-
-    do
+    if(file_handling_helper(storfsInst, (storfs_name_t *)pathToFile, FILE_OPEN, &rmStream) != STORFS_OK)
     {
-        LOGD(TAG, "Deleting File/Fragment At %ld%ld, %ld", (uint32_t)(delDataHeaderLoc.pageLoc >> 32),(uint32_t)(delDataHeaderLoc.pageLoc),  delDataHeaderLoc.byteLoc);
+        return STORFS_ERROR;
+    }
 
-        //Erase the current page
-        if(storfsInst->erase(storfsInst, delDataHeaderLoc.pageLoc) != STORFS_OK)
+
+    if((rmStream.fileInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_FILE)
+    {
+        if(stream == NULL)
         {
-            LOGE(TAG, "Erasing page failed in function remove");
+            
+            LOGE(TAG, "Stream must exist");
             return STORFS_ERROR;
         }
 
-        delDataItr--;
-        if(delDataItr > 0)
+        if(file_delete_helper(storfsInst, rmStream.fileLoc, rmStream.fileInfo) != STORFS_OK)
         {
-            //Set the next location to what is in the erased page's header
-            delDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(currHeaderInfo.fragmentLocation, storfsInst);
-
-            //Store the next locations header information
-            if(file_header_store_helper(storfsInst, &currHeaderInfo, delDataHeaderLoc, "") != STORFS_OK)
-            {
-                LOGE(TAG, "Could not read from the current header");
-                return STORFS_ERROR;
-            }
+            return STORFS_ERROR;
         }
-    } while (delDataItr > 0);
 
+        //Set the stream to NULL so it may not be used again until opened/created
+        stream = NULL;
+    }
+    else
+    {
+       if(directory_delete_helper(storfsInst, rmStream.fileLoc, rmStream.fileInfo) != STORFS_OK)
+       {
+           return STORFS_ERROR;
+       }
+    }
+    
+    
     //Store the previous header and manipulate it
     storfs_file_header_t storfsPreviousHeader;
     file_header_store_helper(storfsInst, &storfsPreviousHeader, rmStream.filePrevLoc, "Previous");
@@ -1247,20 +1342,6 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
         update_root_next_open_byte(storfsInst, BYTEPAGE_TO_LOCATION(rmStream.fileLoc.byteLoc, rmStream.fileLoc.pageLoc, storfsInst));
     }
     
-    //Set the file flag to deleted
-    stream->fileFlags = STORFS_FILE_DELETED_FLAG;
-    stream->fileInfo.childLocation = 0;
-    stream->fileInfo.crc = 0;
-    stream->fileInfo.fileInfo = 0;
-    for(int i = 0; i < STORFS_MAX_FILE_NAME; i++)
-    {
-        stream->fileInfo.fileName[i] = 0x00;
-    }
-    stream->fileInfo.fileSize = 0;
-    stream->fileInfo.fragmentLocation = 0;
-    stream->fileInfo.reserved = 0xFFFF;
-    stream->fileInfo.siblingLocation = 0;
-
     return STORFS_OK;
 }
 
