@@ -1,6 +1,13 @@
 # STORfs 
 
-STORfs is an open source flash file system for embedded MCUs inspired by easy portability and well documentation. The middleware is written in C. Unlike other open source filesystems, the main goal of this project is to inform the user with as much information needed in order to port the file system into one of their projects.
+STORfs is an open source flash file system for embedded MCUs inspired by easy portability, small footprint and well documentation. The middleware is written in C. Unlike other open source filesystems, the main goal of this project is to inform the user with as much information needed in order to port the file system into one of their projects.
+
+STORfs supports
+
+- Wear Levelling
+- Directories and Files
+- File size of 4GB
+- Virtually unlimited storage space
 
 
 
@@ -22,7 +29,7 @@ storfs_t fs = {
   };
 ```
 
-Four functions are needed in order to port STORfs into a users project:
+Four functions are needed in order to port STORfs into a user's project:
 
 ```c
 storfs_err_t (*read)(const struct storfs *storfsInst, storfs_page_t page,
@@ -62,7 +69,6 @@ storfs_err_t storfs_read(const struct storfs *storfsInst, storfs_page_t page,
     delay(50);	//Delay used in order to help synchronization
     return STORFS_OK;
   }
-
   return STORFS_ERROR;
 }
 
@@ -81,8 +87,6 @@ storfs_err_t storfs_write(const struct storfs *storfsInst, storfs_page_t page,
     delay(50);	//Delay used in order to help synchronization
     return STORFS_OK;
   }
-
-  LOGE(TAG, "Major Error");
   return STORFS_ERROR;
 }
 
@@ -93,7 +97,6 @@ storfs_err_t storfs_erase(const struct storfs *storfsInst, storfs_page_t page)
     delay(50);	//Delay used in order to help synchronization
     return STORFS_OK;
   }
-
   return STORFS_ERROR;
 }
 
@@ -104,7 +107,6 @@ storfs_err_t storfs_sync(const struct storfs *storfsInst)
   {
       return STORFS_OK;
   }
-
   return STORFS_ERROR;
 }
 
@@ -135,11 +137,60 @@ int main(void)
 
 
 
+A custom CRC function may be used by defining the pre-processor definition: *STORFS_USE_CRC* that would be declared within the ```storfs_t``` structure:
+
+``` C
+storfs_err_t storfs_crc(const struct storfs *storfsInst, const uint8_t *buffer, storfs_size_t size)
+{
+    ...
+}
+
+storfs_t fs = {
+    ...
+    .crc = storfs_crc
+    ...
+}
+```
+
+*buffer* is the data to be calculated for the CRC and *size* will be the length in bytes of the CRC buffer.
+
+
+
 Test scripts may be found in the *Test* and *Examples* folder above.
 
 The test folder holds a program that will run off of a PC. Just use make to build the project and have a close look at how the filesystem works through the debugging messages.
 
 Other examples are to test out STORfs on an MCU.
+
+
+
+## Configuring STORfs
+
+Configuration for STORfs can be found within the storfs_config.h file. 
+
+Within this file a set of defines are used to declare certain functionalities within STORfs.
+
+Further details below
+
+``` C
+#define  STORFS_MAX_FILE_NAME       32	//Maximum length for a file name, cannot be below 4 char
+
+#define STORFS_NO_LOG 					//Used to determine whether or not STORfs will use logging
+#define STORFS_USE_LOGD					//Will use logging debugging functionality  
+	#define LOGD						//Function-like macro to define the logging mechanism
+#define STORFS_USE_LOGI                	//Will use logging information functionality       
+    #define LOGI						//Function-like macro to define the logging mechanism
+#define STORFS_USE_LOGW					//Will use logging warning functionality  
+    #define LOGW						//Function-like macro to define the logging mechanism
+#define STORFS_USE_LOGE					//Will use logging error functionality  
+    #define LOGE
+
+#define STORFS_LOG_DISPLAY_HEADER		//Define to utilize the display headder logging functionality
+
+#define STORFS_USE_CRC					//Define to use a custom user CRC check for wear-levelling
+```
+
+
 
 
 
