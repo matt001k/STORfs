@@ -85,6 +85,8 @@ int main(void) {
 
     printf("%d", STORFS_HEADER_TOTAL_SIZE);
 
+    STORFS_FILE file1;
+
     //Test mounting root directory c
     storfs_mount(&fs, "C:");
 
@@ -281,6 +283,11 @@ int main(void) {
       storfs_display_header(&fs, location);
     }
 
+    //Test Truncation of a file
+    storfs_mkdir(&fs, "C:/Testing");
+    file1 = storfs_fopen(&fs, "C:/Testing/12.txt", "w+");
+    storfs_fputs(&fs, loadBuffer, 762, &file1);
+    storfs_fputs(&fs, loadBuffer, 1024, &file1);
     
   return 1;
 }

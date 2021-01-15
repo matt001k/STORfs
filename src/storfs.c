@@ -996,6 +996,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
             return STORFS_WRITE_FAILED;
         }
 
+        //Find the current location of the header to be appended on to
         currDataHeaderLoc.byteLoc = 0;
         while(currHeaderInfo.fragmentLocation != 0x00)
         {
@@ -1021,14 +1022,22 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     }
     else
     {
-        //Update the file size register
-        updatedFileSize = STORFS_HEADER_TOTAL_SIZE + n + ((n / (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) * STORFS_HEADER_TOTAL_SIZE);
-    
         //Store the current header so it may be updated when initially writting to memory
         file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Write Function");
 
+        //If file write flag and if there is more than 1 page length of data, delete the file
+        if(currHeaderInfo.fileSize > storfsInst->pageSize)
+        {
+            file_delete_helper(storfsInst, currDataHeaderLoc, currHeaderInfo);
+        }
+
+        //Update the file size register
+        updatedFileSize = STORFS_HEADER_TOTAL_SIZE + n + ((n / (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) * STORFS_HEADER_TOTAL_SIZE);
+
         //Update the file size register in the header of the file
         currHeaderInfo.fileSize = updatedFileSize;
+
+       
     }
 
     //Determine the number of iterations that must be programmed to the device
