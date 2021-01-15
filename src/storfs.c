@@ -2,7 +2,6 @@
 #include "storfs_config.h"
 
 #include <string.h>
-//#include "logging.h"
 
 #define IS_EMPTY_FILE(info)
 
