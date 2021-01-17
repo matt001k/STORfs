@@ -200,8 +200,3 @@ STORfs was laid out similar to a tree type data structure, utilizing children an
 
 The following pictures how files/directories are laid out within the system: 
 
-```mermaid
-	
-```
-
-fdas
