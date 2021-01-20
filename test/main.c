@@ -104,9 +104,9 @@ int main(void) {
     
     //Test opening and creating files
     
-    file1 = storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+");
+    storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+", &file1);
     storfs_touch(&fs, "C:/HelloDere/hello.txt");
-    file1 = storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+");
+    storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+", &file1);
 
     storfs_loc_t location;
     location.byteLoc = 435;
@@ -171,7 +171,7 @@ int main(void) {
     storfs_touch(&fs, "C:/HelloDere/hello.txt/Jello.txt");
 
     //Appending to a file
-    file1 = storfs_fopen(&fs, "C:/HelloDere/hello.txt", "a+");
+    storfs_fopen(&fs, "C:/HelloDere/hello.txt", "a+", &file1);
     storfs_fputs(&fs, "Hello How are You", 17, &file1);
     storfs_fgets(&fs, buffer, 1050, &file1);
     printf("File Read: %s \n", buffer);
@@ -190,14 +190,14 @@ int main(void) {
     display_cache(fs);
 
     //Open old file and truncate it
-    file1 = storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+");
+    storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+", &file1);
     display_cache(fs);
 
     //Multiple files opened for testing
     STORFS_FILE file2, file3, file4;
-    file2 = storfs_fopen(&fs, "C:/HelloDere/hello1.txt", "r+");
-    file3 = storfs_fopen(&fs, "C:/HelloDere/hello2.txt", "r+");
-    file4 = storfs_fopen(&fs, "C:/HelloDere/hello3.txt", "r+");
+    storfs_fopen(&fs, "C:/HelloDere/hello1.txt", "r+", &file2);
+    storfs_fopen(&fs, "C:/HelloDere/hello2.txt", "r+", &file3);
+    storfs_fopen(&fs, "C:/HelloDere/hello3.txt", "r+", &file4);
     display_cache(fs);
 
     storfs_fputs(&fs, loadBuffer, 1024, &file2);
@@ -253,26 +253,26 @@ int main(void) {
 
     //Test creating a directory with many files and then deleting it
     storfs_mkdir(&fs, "C:/Testing");
-    file1 = storfs_fopen(&fs, "C:/Testing/12.txt", "r+");
-    file2 = storfs_fopen(&fs, "C:/Testing/123.txt", "a+");
-    file3 = storfs_fopen(&fs, "C:/Testing/1234.txt", "a+");
-    file4 = storfs_fopen(&fs, "C:/Testing/12345.txt", "w+");
+    storfs_fopen(&fs, "C:/Testing/12.txt", "r+", &file1);
+    storfs_fopen(&fs, "C:/Testing/123.txt", "a+", &file2);
+    storfs_fopen(&fs, "C:/Testing/1234.txt", "a+", &file3);
+    storfs_fopen(&fs, "C:/Testing/12345.txt", "w+", &file4);
     storfs_fputs(&fs, loadBuffer, 256, &file1);
     storfs_fputs(&fs, loadBuffer, 1024, &file2);
     storfs_fputs(&fs, loadBuffer, 100, &file3);
     storfs_fputs(&fs, loadBuffer, 512, &file4);
     storfs_mkdir(&fs, "C:/Testing/TEST");
-    file1 = storfs_fopen(&fs, "C:/Testing/TEST/12.txt", "r+");
-    file2 = storfs_fopen(&fs, "C:/Testing/TEST/123.txt", "a+");
-    file3 = storfs_fopen(&fs, "C:/Testing/TEST/1234.txt", "a+");
-    file4 = storfs_fopen(&fs, "C:/Testing/TEST/12345.txt", "w+");
+    storfs_fopen(&fs, "C:/Testing/TEST/12.txt", "r+", &file1);
+    storfs_fopen(&fs, "C:/Testing/TEST/123.txt", "a+", &file2);
+    storfs_fopen(&fs, "C:/Testing/TEST/1234.txt", "a+", &file3);
+    storfs_fopen(&fs, "C:/Testing/TEST/12345.txt", "w+", &file4);
     storfs_fputs(&fs, loadBuffer, 256, &file1);
     storfs_fputs(&fs, loadBuffer, 1024, &file2);
     storfs_fputs(&fs, loadBuffer, 100, &file3);
     storfs_fputs(&fs, loadBuffer, 512, &file4);
     storfs_mkdir(&fs, "C:/Testing/TEST/Pest");
-    file1 = storfs_fopen(&fs, "C:/Testing/TEST/Pest/12.txt", "r+");
-    file2 = storfs_fopen(&fs, "C:/Testing/TEST/Pest/123.txt", "a+");
+    storfs_fopen(&fs, "C:/Testing/TEST/Pest/12.txt", "r+", &file1);
+    storfs_fopen(&fs, "C:/Testing/TEST/Pest/123.txt", "a+", &file2);
     storfs_fputs(&fs, loadBuffer, 256, &file1);
     storfs_fputs(&fs, loadBuffer, 1024, &file2);
     storfs_rm(&fs, "C:/Testing", NULL);
@@ -285,7 +285,7 @@ int main(void) {
 
     //Test Truncation of a file
     storfs_mkdir(&fs, "C:/Testing");
-    file1 = storfs_fopen(&fs, "C:/Testing/12.txt", "w+");
+    storfs_fopen(&fs, "C:/Testing/12.txt", "w+", &file1);
     storfs_fputs(&fs, loadBuffer, 762, &file1);
     storfs_fputs(&fs, loadBuffer, 1024, &file1);
     

@@ -300,7 +300,7 @@ typedef struct storfs_fopen_file_info{
      * @param       stream      File to save the file information from the function
      * @return      STORFS_OK   Succeed
 */
-STORFS_FILE storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode);
+storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode, STORFS_FILE *stream);
 
 /**
      * @brief       fputs
@@ -340,7 +340,7 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
 storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream);
 
 
-void storfs_display_header(storfs_t *storfsInst, storfs_loc_t loc);
+storfs_err_t storfs_display_header(storfs_t *storfsInst, storfs_loc_t loc);
 
 
 #endif

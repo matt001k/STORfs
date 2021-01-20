@@ -853,14 +853,12 @@ storfs_err_t storfs_touch(storfs_t *storfsInst, char *pathToFile)
     return file_handling_helper(storfsInst, (storfs_name_t *)pathToFile, FILE_CREATE, NULL);
 }
 
-STORFS_FILE storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode)
+storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode, STORFS_FILE *stream)
 {
     LOGI(TAG, "Opening File at %s in %s mode", pathToFile, mode);
     storfs_file_flags_t fileFlags = 0;
 
-    STORFS_FILE currentOpenFile;
-
-    if(file_handling_helper(storfsInst, (storfs_name_t *)pathToFile, FILE_OPEN, &currentOpenFile) != STORFS_OK)
+    if(file_handling_helper(storfsInst, (storfs_name_t *)pathToFile, FILE_OPEN, stream) != STORFS_OK)
     {
         LOGE(TAG, "Cannot open or create file");
         goto ERR;
@@ -870,9 +868,9 @@ STORFS_FILE storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mo
     if(strcmp(mode, "w") == 0)
     {
         //Determine if the file is already populated with data, and if it is delete the file associated
-        if(currentOpenFile.fileInfo.fileSize > STORFS_HEADER_TOTAL_SIZE)
+        if(stream->fileInfo.fileSize > STORFS_HEADER_TOTAL_SIZE)
         {
-            if(fopen_write_flag_helper(storfsInst, pathToFile, &currentOpenFile) != STORFS_OK)
+            if(fopen_write_flag_helper(storfsInst, pathToFile, stream) != STORFS_OK)
             {
                 goto ERR;
             }   
@@ -891,9 +889,9 @@ STORFS_FILE storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mo
     else if(strcmp(mode, "w+") == 0)
     {
         //Determine if the file is already populated with data, and if it is delete the file associated
-        if(currentOpenFile.fileInfo.fileSize > STORFS_HEADER_TOTAL_SIZE)
+        if(stream->fileInfo.fileSize > STORFS_HEADER_TOTAL_SIZE)
         {
-            if(fopen_write_flag_helper(storfsInst, pathToFile, &currentOpenFile) != STORFS_OK)
+            if(fopen_write_flag_helper(storfsInst, pathToFile, stream) != STORFS_OK)
             {
                 goto ERR;
             }
@@ -916,18 +914,15 @@ STORFS_FILE storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mo
     }
     
     //Set the current file flags as the file flags for the returned FILE struct
-    currentOpenFile.fileFlags = fileFlags;
+    stream->fileFlags = fileFlags;
 
     LOGD(TAG, "File Location: %ld%ld, %ld \r\n \
-    File Flags: %d", (uint32_t)(currentOpenFile.fileLoc.pageLoc >> 32), (uint32_t)(currentOpenFile.fileLoc.pageLoc ), currentOpenFile.fileLoc.byteLoc, fileFlags);
+    File Flags: %d", (uint32_t)(stream->fileLoc.pageLoc >> 32), (uint32_t)(stream->fileLoc.pageLoc ), stream->fileLoc.byteLoc, fileFlags);
 
-    return currentOpenFile;
+    return STORFS_OK;
 
     ERR:
-        currentOpenFile.fileFlags = 0;
-        currentOpenFile.fileLoc.byteLoc = 0;
-        currentOpenFile.fileLoc.pageLoc = 0;
-        return currentOpenFile;
+        return STORFS_ERROR;
 }
 
 storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, STORFS_FILE *stream)
@@ -1262,11 +1257,10 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
 
     if((rmStream.fileInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_FILE)
     {
-        if(stream == NULL)
+        if(stream != NULL)
         {
-            
-            LOGE(TAG, "Stream must exist");
-            return STORFS_ERROR;
+            //Set the stream to NULL so it may not be used again until opened/created
+            stream = NULL;
         }
 
         if(file_delete_helper(storfsInst, rmStream.fileLoc, rmStream.fileInfo) != STORFS_OK)
@@ -1274,8 +1268,6 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
             return STORFS_ERROR;
         }
 
-        //Set the stream to NULL so it may not be used again until opened/created
-        stream = NULL;
     }
     else
     {
@@ -1353,9 +1345,14 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
     return STORFS_OK;
 }
 
-void storfs_display_header(storfs_t *storfsInst, storfs_loc_t loc)
+storfs_err_t storfs_display_header(storfs_t *storfsInst, storfs_loc_t loc)
 {
     storfs_file_header_t header;
-    file_header_store_helper(storfsInst, &header, loc, "Test");
+    if(file_header_store_helper(storfsInst, &header, loc, "Test") != STORFS_OK)
+    {
+        return STORFS_ERROR;
+    }
     file_info_display_helper(header);
+
+    return STORFS_OK;
 }
