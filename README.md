@@ -8,7 +8,7 @@ STORfs supports
 - Directories and Files
 - File size of 4GB
 - Virtually unlimited storage space
-
+- Easy user interface with functions
 
 
 ## Porting STORfs
@@ -21,7 +21,7 @@ storfs_t fs = {
     .write = storfs_write,			//Function to write a page in flash
     .erase = storfs_erase,			//Function to erase a page in flash
     .sync = storfs_sync,			//Sync after reading/writing to make certain the next command is ready
-    .memInst = &memInst,			//Pointer to the memory instance of the flash chip driver (can be NULL)
+    .memInst = &memInst,			//Pointer to the memory instance of the flash chip driver (optional)
     .firstByteLoc = 0,				//Location of the first byte in storage to store the root partition
     .firstPageLoc = 0,				//Location of the first page in storage to store the root partition
     .pageSize = 512,				//Size of each erasable page(in bytes)
@@ -54,7 +54,7 @@ storfs_err_t (*sync)(const struct storfs *storfsInst);
 - Sync:
   - Used to ensure the flash chip is ready for the next read/write/erase operation
 
-Below is an example of initialization of the file system:
+Below is an **example** of initialization of the file system:
 
 ```c
 storfs_err_t storfs_read(const struct storfs *storfsInst, storfs_page_t page,
@@ -64,7 +64,7 @@ storfs_err_t storfs_read(const struct storfs *storfsInst, storfs_page_t page,
   mainMem.memPageAddr = page;
   mainMem.memByteAddr = byte;
 
-  if(at45_cont_arr_rx(&at45Inst, mainMem, buffer, size) == AT45XXXXX_OK)
+  if(at45_cont_arr_rx(storfsInst->memInst, mainMem, buffer, size) == AT45XXXXX_OK)
   {
     delay(50);	//Delay used in order to help synchronization
     return STORFS_OK;
@@ -81,7 +81,8 @@ storfs_err_t storfs_write(const struct storfs *storfsInst, storfs_page_t page,
   mainMem.memPageAddr = page;
   mainMem.memByteAddr = byte;
 
-  err = at45_buf_mem_pg_thru_tx_w_erase(&at45Inst, mainMem, AT45XXXXX_SRAM_BUF_1, (uint8_t *)buffer, size);
+  err = at45_buf_mem_pg_thru_tx_w_erase(storfsInst->memInst, mainMem, AT45XXXXX_SRAM_BUF_1, \
+  		(uint8_t *)buffer, size);
   if(err == AT45XXXXX_OK)
   {
     delay(50);	//Delay used in order to help synchronization
@@ -92,7 +93,7 @@ storfs_err_t storfs_write(const struct storfs *storfsInst, storfs_page_t page,
 
 storfs_err_t storfs_erase(const struct storfs *storfsInst, storfs_page_t page)
 {
-  if(at45_page_erase(&at45Inst, page) == AT45XXXXX_OK)
+  if(at45_page_erase(storfsInst->memInst, page) == AT45XXXXX_OK)
   {
     delay(50);	//Delay used in order to help synchronization
     return STORFS_OK;
@@ -103,7 +104,7 @@ storfs_err_t storfs_erase(const struct storfs *storfsInst, storfs_page_t page)
 storfs_err_t storfs_sync(const struct storfs *storfsInst)
 {
   //Determine if the device is busy or ready for the next action
-  if(device_busy_poll(&at45Inst) == AT45XXXXX_OK)
+  if(device_busy_poll(storfsInst->memInst) == AT45XXXXX_OK)
   {
       return STORFS_OK;
   }
@@ -113,6 +114,7 @@ storfs_err_t storfs_sync(const struct storfs *storfsInst)
 int main(void)
 {
     //Initialization of the flash memory device
+    at45xxxxx_inst_t at45Inst;
    	at45Inst.cnfg.dataSize = AT45XXXXX_512B;
     at45Inst.spiInst = &SPIInst;
     at45_memory_init(&at45Inst);
@@ -191,12 +193,122 @@ Further details below
 ```
 
 
+## STORfs Functions
 
+``` c 
+storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName);
+```
 
+- Mounts the file system at the dedicated partition name
+
+- Partition name can be NULL if the file system is already instantiated
+- All files branch from this partition
+
+``` c
+storfs_err_t storfs_mkdir(storfs_t *storfsInst, char *pathToDir);
+```
+
+- Makes a new directory in the according path
+
+  - The path must branch from the root directory
+
+    *Ex:* Path to a new directory *"C:/Users/Documents"* will create a directory called Documents as a child to Users
+
+- Can create multiple directories within one path
+
+``` c 
+storfs_err_t storfs_touch(storfs_t *storfsInst, char *pathToFile);
+```
+
+- Makes a new file in the according path
+- Only a single file can be made per call
+
+``` C 
+storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode, STORFS_FILE *stream)
+```
+
+- Opens or creates a file at the according path
+
+- File may be read or written to depending on the mode provided
+
+  - **w:** write only and truncate existing file
+
+  - **w+:** read/write and truncate existing file
+
+  - **r:** read only
+
+  - **r+:** read/write and truncate the existing file
+
+  - **a:** write only and append existing file
+
+  - **a+:** read/write and append existing file
+
+``` c
+storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, STORFS_FILE *stream);
+```
+- Write to a file stream according to the flags used to open a file
+``` c
+storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *stream);
+```
+- Used to read from a file stream for a certain amount of characters
+``` c
+storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream);
+```
+- Removes a file/directory according to the path declard
+- If  a file is associated with a stream, the stream may be used called to terminate its values
+- If a directory is removed, all of its contents within(children) will be removed as well
 
 ## STORfs Explained
 
-STORfs was laid out similar to a tree type data structure, utilizing children and siblings.
+STORfs is laid out similar to a tree type data structure, utilizing children and siblings.
 
 The following pictures how files/directories are laid out within the system: 
+
+<div style="text-align:center"><img src="Documentation\images\STORfs_Layout.svg" /></div>
+
+Files may only have siblings whereas directories have the ability to have children and siblings. 
+
+
+
+### File Header Information
+
+Each file is laid out with a header. The header consists of:
+
+- File Information
+- Filename
+  - Max length is user defined(minimum max length is 4)
+- Child Location
+  - Points to child location
+- Sibling Location
+  - Points to sibling location
+- File Fragment Location
+  - Points to file fragment Location
+- File Size
+  - Up to 4GB
+- CRC 
+  - Can be user defined
+
+An in depth look shown explained below:
+
+
+
+### CRC Information
+
+CRC is calculated differently depending on the type of item being stored in the file system.
+
+
+
+The root and directories will calculate the CRC based on its filename along with very newly created files. 
+
+*Ex:* If the root name is *C:* the CRC will be calculated based on the 2 bytes of the file name, this is depending on the formula provided by the user or the already designed CRC function in storfs.c
+
+
+
+Files (previously created and either written to or appended to) will utilize the data written to its page/section to determine the CRC. Each fragment section will utilize the data written to that page/section to calculate the CRC of that fragment as well.
+
+
+
+When writing to a file/fragment STORfs will determine whether or not that page/section is bad by reading the data just written to the page/section and calculating the CRC from the read data. If the CRC calculated does not match the header CRC, STORfs will find the next available page/section and check that section, this process goes on until a good page/section is available.
+
+
 
