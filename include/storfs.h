@@ -62,6 +62,8 @@
                                                             STORFS_SIBLING_DIR_SIZE + STORFS_RESERVED_SIZE + \
                                                             STORFS_FRAGMENT_LOC_SIZE + STORFS_FILE_SIZE + \
                                                             STORFS_CRC_SIZE + STORFS_MAX_FILE_NAME)
+#define STORFS_FRAGMENT_HEADER_TOTAL_SIZE                   (STORFS_INFO_REG_SIZE + STORFS_RESERVED_SIZE + \
+                                                            STORFS_FRAGMENT_LOC_SIZE + STORFS_CRC_SIZE)
 
 /** @brief File Info Register Bit Definitions */
 #define STORFS_INFO_REG_NOT_FRAGMENT_BIT                    (0X1 << 7)

@@ -175,9 +175,9 @@ int main(void) {
     storfs_fputs(&fs, "Hello How are You", 17, &file1);
     storfs_fgets(&fs, buffer, 1050, &file1);
     printf("File Read: %s \n", buffer);
+    loadBuffer[1023] = '\0';
     storfs_fputs(&fs, loadBuffer, 1024, &file1);
     storfs_fgets(&fs, buffer, 1050 + 1024, &file1);
-    buffer[1050+1024] = '\0';
     printf("File Read: %s \n", buffer);
     display_cache(fs);
 
@@ -187,10 +187,6 @@ int main(void) {
     fs.read(&fs, 4, 0, (uint8_t *)buffer, fs.pageSize);
     buffer[fs.pageSize - 1] = fs.pageSize;
     printf("File Read: %s \n", buffer);
-    display_cache(fs);
-
-    //Open old file and truncate it
-    storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+", &file1);
     display_cache(fs);
 
     //Multiple files opened for testing
@@ -253,7 +249,7 @@ int main(void) {
 
     //Test creating a directory with many files and then deleting it
     storfs_mkdir(&fs, "C:/Testing");
-    storfs_fopen(&fs, "C:/Testing/12.txt", "r+", &file1);
+    storfs_fopen(&fs, "C:/Testing/12.txt", "w+", &file1);
     storfs_fopen(&fs, "C:/Testing/123.txt", "a+", &file2);
     storfs_fopen(&fs, "C:/Testing/1234.txt", "a+", &file3);
     storfs_fopen(&fs, "C:/Testing/12345.txt", "w+", &file4);
@@ -288,6 +284,7 @@ int main(void) {
     storfs_fopen(&fs, "C:/Testing/12.txt", "w+", &file1);
     storfs_fputs(&fs, loadBuffer, 762, &file1);
     storfs_fputs(&fs, loadBuffer, 1024, &file1);
+    storfs_fopen(&fs, "C:/Testing/12.txt", "w+", &file1);
     
   return 1;
 }
