@@ -9,6 +9,8 @@ STORfs supports
 - File size of 4GB
 - Virtually unlimited storage space
 - Easy user interface with functions
+- Small footprint
+  - Compiling as low as 7660 Bytes (*compiled with gcc arm*)
 
 
 ## Porting STORfs
@@ -80,7 +82,7 @@ storfs_err_t storfs_write(const struct storfs *storfsInst, storfs_page_t page,
   at45xxxxx_main_mem_info_t mainMem;
   mainMem.memPageAddr = page;
   mainMem.memByteAddr = byte;
-
+    
   err = at45_buf_mem_pg_thru_tx_w_erase(storfsInst->memInst, mainMem, AT45XXXXX_SRAM_BUF_1, \
   		(uint8_t *)buffer, size);
   if(err == AT45XXXXX_OK)
@@ -158,9 +160,9 @@ storfs_t fs = {
 
 
 
-Test scripts may be found in the *Test* and *Examples* folder above.
+Test scripts may be found in the *Examples* folder above.
 
-The test folder holds a program that will run off of a PC. Just use make to build the project and have a close look at how the filesystem works through the debugging messages.
+The test folder holds a program that will run off of a PC under the folder *test*. Just use make to build the project and have a close look at how the file system works through the debugging messages.
 
 Other examples are to test out STORfs on an MCU.
 
@@ -178,14 +180,10 @@ Further details below
 #define  STORFS_MAX_FILE_NAME       32	//Maximum length for a file name, cannot be below 4 char
 
 #define STORFS_NO_LOG 					//Used to determine whether or not STORfs will use logging
-#define STORFS_USE_LOGD					//Will use logging debugging functionality  
-	#define LOGD						//Function-like macro to define the logging mechanism
-#define STORFS_USE_LOGI                	//Will use logging information functionality       
-    #define LOGI						//Function-like macro to define the logging mechanism
-#define STORFS_USE_LOGW					//Will use logging warning functionality  
-    #define LOGW						//Function-like macro to define the logging mechanism
-#define STORFS_USE_LOGE					//Will use logging error functionality  
-    #define LOGE
+#define STORFS_LOGI(TAG, fmt, ...)		//Function-like macro to define the logging mechanism      
+#define STORFS_LOGD(TAG, fmt, ...)		//Function-like macro to define the logging mechanism
+#define STORFS_LOGW(TAG, fmt, ...)		//Function-like macro to define the logging mechanism
+#define STORFS_LOGE(TAG, fmt, ...)		//Function-like macro to define the logging mechanism
 
 #define STORFS_LOG_DISPLAY_HEADER		//Define to utilize the display headder logging functionality
 
@@ -254,7 +252,7 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
 ``` c
 storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream);
 ```
-- Removes a file/directory according to the path declard
+- Removes a file/directory according to the path declared
 - If  a file is associated with a stream, the stream may be used called to terminate its values
 - If a directory is removed, all of its contents within(children) will be removed as well
 
@@ -270,7 +268,7 @@ Files may only have siblings whereas directories have the ability to have childr
 
 
 
-### File Header Information
+### File Header Information and File Layout
 
 Each file is laid out with a header. The header consists of:
 
@@ -288,7 +286,17 @@ Each file is laid out with a header. The header consists of:
 - CRC 
   - Can be user defined
 
-An in depth look shown explained below:
+
+
+At the beginning of the file system, two separate pages/blocks are dedicated to the root partition file header. Two are used just in case reading data from the first file header is corrupted, the data may then be read from the second header.
+
+Files are fragmented at the end of a page/block. When the page size is exceeded, data will be fragmented to the next open page/block. A new smaller sized header will be written to the beginning of that page/block followed by the remaining data, this is repeated until the amount of data to be written to the device is exhausted.
+
+An in depth look is shown below:
+
+<div style="text-align:center"><img src="Documentation\images\STORFS_Scheme.svg" /></div>
+
+As can be seen, fragment headers of files are much smaller as to allow for as much storage space as possible for a file.
 
 
 
@@ -296,17 +304,11 @@ An in depth look shown explained below:
 
 CRC is calculated differently depending on the type of item being stored in the file system.
 
-
-
 The root and directories will calculate the CRC based on its filename along with very newly created files. 
 
 *Ex:* If the root name is *C:* the CRC will be calculated based on the 2 bytes of the file name, this is depending on the formula provided by the user or the already designed CRC function in storfs.c
 
-
-
 Files (previously created and either written to or appended to) will utilize the data written to its page/section to determine the CRC. Each fragment section will utilize the data written to that page/section to calculate the CRC of that fragment as well.
-
-
 
 When writing to a file/fragment STORfs will determine whether or not that page/section is bad by reading the data just written to the page/section and calculating the CRC from the read data. If the CRC calculated does not match the header CRC, STORfs will find the next available page/section and check that section, this process goes on until a good page/section is available.
 
