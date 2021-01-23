@@ -5,12 +5,12 @@ CFLAGS = -g -Wall -Wno-format
 # C Sources
 C_SOURCES = \
 main.c \
-../src/storfs.c
+../../src/storfs.c
 
 # C Includes
 C_INCLUDES = \
 -I../test \
--I../include 
+-I../../include 
 
 # Build Path
 BUILD_DIR = build

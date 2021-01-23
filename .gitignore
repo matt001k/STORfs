@@ -1,4 +1,4 @@
-test/build
+*build
 
 # Node artifact files
 node_modules/
