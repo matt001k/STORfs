@@ -26,29 +26,29 @@
     #define STORFS_MAX_FILE_NAME  4
 #endif
 
-/** @brief Logging defines for serial output/display functionality */
+/** @brief STORFS_LOGging defines for serial output/display functionality */
 #ifndef STORFS_NO_LOG
-    #ifndef LOGI
-        #define LOGI(TAG, fmt, ...) \
+    #ifndef STORFS_LOGI
+        #define STORFS_LOGI(TAG, fmt, ...) \
             printf("| I |" fmt "\n", ##__VA_ARGS__)
     #endif
-    #ifndef LOGD
-        #define LOGD(TAG, fmt, ...) \
+    #ifndef STORFS_LOGD
+        #define STORFS_LOGD(TAG, fmt, ...) \
             printf("| D |" fmt "\n", ##__VA_ARGS__)
     #endif
-    #ifndef LOGW
-        #define LOGW(TAG, fmt, ...) \
+    #ifndef STORFS_LOGW
+        #define STORFS_LOGW(TAG, fmt, ...) \
             printf("| W |" fmt "\n",  ##__VA_ARGS__)
     #endif
-    #ifndef LOGE
-        #define LOGE(TAG, fmt, ...) \
+    #ifndef STORFS_LOGE
+        #define STORFS_LOGE(TAG, fmt, ...) \
             printf("| E |" fmt "\n", ##__VA_ARGS__)
     #endif
 #else
-    #define LOGI(TAG, fmt, ...)
-    #define LOGD(TAG, fmt, ...)  
-    #define LOGW(TAG, fmt, ...) 
-    #define LOGE(TAG, fmt, ...) 
+    #define STORFS_LOGI(TAG, fmt, ...)
+    #define STORFS_LOGD(TAG, fmt, ...)  
+    #define STORFS_LOGW(TAG, fmt, ...) 
+    #define STORFS_LOGE(TAG, fmt, ...) 
 #endif
 
 #define STORFS_INFO_REG_SIZE                                1
@@ -78,7 +78,6 @@
 
 /** @brief Alias for size in bytes of items */ 
 typedef uint64_t storfs_size_t;
-
 
 /** @brief Describes the page location */ 
 typedef uint64_t storfs_page_t;
@@ -125,7 +124,6 @@ typedef struct {
     storfs_file_size_t fileSize;
     storfs_crc_t crc;
 } storfs_file_header_t;
-
 
 
 /** @brief "Cache" for items in the current filesystem instance */ 

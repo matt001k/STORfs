@@ -4,6 +4,8 @@
 #include <stdio.h>
 
 #define MEMORYSIMSIZE  33550336
+
+#define PAGESIZE 512
 uint8_t memorySim[MEMORYSIMSIZE];
 
 //#define HIGH_VOL_WRITE_TEST
@@ -21,14 +23,14 @@ static void display_cache(storfs_t fs)
 storfs_err_t storfs_read(const struct storfs *storfsInst, storfs_page_t page,
             storfs_byte_t byte, uint8_t *buffer, storfs_size_t size)
 {
-  if((byte + size) > 512)
+  if((byte + size) > PAGESIZE)
   {
     return STORFS_ERROR;
   }
 
   for(int i = 0; i < size; i++)
   {
-    buffer[i] = memorySim[(512 * page) + i + byte];
+    buffer[i] = memorySim[(PAGESIZE * page) + i + byte];
   }
 
   return STORFS_OK;
@@ -37,22 +39,22 @@ storfs_err_t storfs_read(const struct storfs *storfsInst, storfs_page_t page,
 storfs_err_t storfs_write(const struct storfs *storfsInst, storfs_page_t page,
             storfs_byte_t byte, uint8_t *buffer, storfs_size_t size)
 {
-  if((byte + size) > 512)
+  if((byte + size) > PAGESIZE)
   {
     return STORFS_ERROR;
   }
   for(int i = 0; i < size; i++)
   {
-     memorySim[(512 * page) + i + byte] = buffer[i];
+     memorySim[(PAGESIZE * page) + i + byte] = buffer[i];
   }
   return STORFS_OK;
 }
 
 storfs_err_t storfs_erase(const struct storfs *storfsInst, storfs_page_t page)
 {
-  for(int i = 0; i < 512; i++)
+  for(int i = 0; i < PAGESIZE; i++)
   {
-    memorySim[(512 * page) + i] = 0xFF;
+    memorySim[(PAGESIZE * page) + i] = 0xFF;
   }
 return STORFS_OK;
 }
@@ -78,8 +80,8 @@ int main(void) {
       .sync = storfs_sync,
       .memInst = NULL,
       .firstPageLoc = 20,
-      .firstByteLoc = 435,
-      .pageSize = 512,
+      .firstByteLoc = 0,
+      .pageSize = PAGESIZE,
       .pageCount = 8191,
     };
 

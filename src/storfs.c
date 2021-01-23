@@ -120,11 +120,11 @@ static storfs_err_t crc_compare(storfs_t *storfsInst, storfs_file_header_t storf
 {
     if(storfsInfo.crc == (STORFS_CRC_CALC(storfsInst, buf, bufLen)))
     {
-        LOGD(TAG, "CRC Code Correct");
+        STORFS_LOGD(TAG, "CRC Code Correct");
         return STORFS_OK;
     }
 
-    LOGE(TAG, "CRC Code Returned Incorrectly");
+    STORFS_LOGE(TAG, "CRC Code Returned Incorrectly");
     return STORFS_CRC_ERR;
 }
 
@@ -300,7 +300,7 @@ static void info_to_buf(uint8_t *buf, storfs_file_header_t *storfsInfo)
 #ifdef STORFS_LOG_DISPLAY_HEADER
     static void file_info_display_helper(storfs_file_header_t storfsInfo)
     {
-        LOGI(TAG, "\t fileInfo %x \r\n \
+        STORFS_LOGI(TAG, "\t fileInfo %x \r\n \
         fileName %s \r\n \
         childLocation %lx%lx \r\n \
         siblingLocation %lx%lx \r\n \
@@ -312,6 +312,11 @@ static void info_to_buf(uint8_t *buf, storfs_file_header_t *storfsInfo)
         (uint32_t)(storfsInfo.siblingLocation >> 32), (uint32_t)storfsInfo.siblingLocation, \
         storfsInfo.reserved, (uint32_t)(storfsInfo.fragmentLocation >> 32), (uint32_t)storfsInfo.fragmentLocation, \
         storfsInfo.fileSize, storfsInfo.crc);
+    }
+#else
+    static void file_info_display_helper(storfs_file_header_t storfsInfo)
+    {
+        return 0;
     }
 #endif
 
@@ -328,7 +333,7 @@ static storfs_err_t file_header_create_helper(storfs_t *storfsInst, storfs_file_
     }
 
     //Turn the header information into a buffer to write to memory
-    LOGD(TAG, "Writing %s Header at %ld%ld, %ld", string, (uint32_t)(storfsLoc.pageLoc >> 32), \
+    STORFS_LOGD(TAG, "Writing %s Header at %ld%ld, %ld", string, (uint32_t)(storfsLoc.pageLoc >> 32), \
                 (uint32_t)(storfsLoc.pageLoc),  storfsLoc.byteLoc);
     info_to_buf(headerBuf, storfsInfo);
     if(storfsInst->write(storfsInst, storfsLoc.pageLoc, storfsLoc.byteLoc, headerBuf, STORFS_HEADER_TOTAL_SIZE) != STORFS_OK)
@@ -347,7 +352,7 @@ static storfs_err_t file_header_store_helper(storfs_t *storfsInst, storfs_file_h
     storfs_err_t status = STORFS_OK;
     uint8_t headerBuf[STORFS_HEADER_TOTAL_SIZE];
 
-    LOGD(TAG, "Storing %s Header at %ld%ld, %ld", string, (uint32_t)(storfsLoc.pageLoc >> 32), \
+    STORFS_LOGD(TAG, "Storing %s Header at %ld%ld, %ld", string, (uint32_t)(storfsLoc.pageLoc >> 32), \
                 (uint32_t)(storfsLoc.pageLoc), storfsLoc.byteLoc);
     if(storfsInst->read(storfsInst, storfsLoc.pageLoc, storfsLoc.byteLoc, headerBuf, STORFS_HEADER_TOTAL_SIZE) != STORFS_OK)
     {
@@ -403,7 +408,7 @@ static storfs_err_t find_next_open_byte_helper (storfs_t *storfsInst, storfs_loc
 
 static storfs_err_t find_update_next_open_byte(storfs_t *storfsInst, storfs_loc_t storfsLoc)
 {
-    LOGD(TAG, "Finding and updating next open byte");
+    STORFS_LOGD(TAG, "Finding and updating next open byte");
     if(find_next_open_byte_helper(storfsInst, &storfsLoc) != STORFS_OK)
     {
         return STORFS_ERROR;
@@ -435,7 +440,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
             {
                 if(actionFlag == DIR_CREATE)
                 {
-                    LOGE(TAG, "Directory name cannot have an extension");
+                    STORFS_LOGE(TAG, "Directory name cannot have an extension");
                     return STORFS_ERROR; 
                 }
                 fileSepCnt++;
@@ -443,7 +448,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
             currentFileName[currStr++] = pathToDir[strLen++];
         }
         currentFileName[currStr] = '\0';
-        LOGD(TAG, "File name %s", currentFileName);
+        STORFS_LOGD(TAG, "File name %s", currentFileName);
 
         if(pathToDir[strLen] == '\0')
         {
@@ -462,7 +467,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
             if(strcmp((const char *)currentDirInfo.fileName, (const char *)currentFileName) == 0)
             {
                 //If the filename is matched it is a parent directory, update the previous file information with the current
-                LOGD(TAG, "File name matched: %s", currentFileName);
+                STORFS_LOGD(TAG, "File name matched: %s", currentFileName);
 
                  if(pathFlag == PATH_LAST)
                 {
@@ -494,7 +499,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
 
                 //If the filename is not matched and the sibling location exists, it is a sibling directory
                 //Update the previous file information with the current
-                LOGD(TAG, "Name not matched, searching siblings");
+                STORFS_LOGD(TAG, "Name not matched, searching siblings");
                 previousFile.fileLoc = currentLocation;
                 previousFile.filePrevFlags = STORFS_FILE_SIBLING_FLAG;
                 previousFile.fileInfo = currentDirInfo;
@@ -506,12 +511,12 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
             }
             else
             {
-                LOGD(TAG, "Name not matched, and no siblings, creating file/directory at next open location");
+                STORFS_LOGD(TAG, "Name not matched, and no siblings, creating file/directory at next open location");
 
                 //File's cannot be children of other files
                 if(fileSepCnt > 1)
                 {
-                    LOGE(TAG, "File/directory cannot be a child of another file");
+                    STORFS_LOGE(TAG, "File/directory cannot be a child of another file");
                     return STORFS_ERROR;
                 }
 
@@ -555,7 +560,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                 {
                     previousFile.fileInfo.siblingLocation = BYTEPAGE_TO_LOCATION(currentLocation.byteLoc, currentLocation.pageLoc, storfsInst);
                     //If the previous file is a directory simply update the header, if not read in the data of the original file page and update the page with a new header
-                    if((previousFile.fileInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
+                    if((previousFile.fileInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) != STORFS_INFO_REG_FILE_TYPE_FILE)
                     {
                         if(file_header_create_helper(storfsInst, &previousFile.fileInfo, previousFile.fileLoc, "") != STORFS_OK)
                         {
@@ -565,10 +570,11 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                     else
                     {
                         //Update the header at the previous location by re-writting the whole page
-                        uint8_t siblingBuf[storfsInst->pageSize];
+                        uint8_t siblingBuf[storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE];
+                        uint8_t sendBuf[storfsInst->pageSize];
                         uint8_t updatedHeader[STORFS_HEADER_TOTAL_SIZE];
 
-                        LOGD(TAG, "Updating Previous File Sibling Location at the file's initial location at %ld%ld, %d", (uint32_t)(previousFile.fileLoc.pageLoc >> 32), (uint32_t)(previousFile.fileLoc.pageLoc), 0);
+                        STORFS_LOGD(TAG, "Updating Previous File Sibling Location at the file's initial location at %ld%ld, %d", (uint32_t)(previousFile.fileLoc.pageLoc >> 32), (uint32_t)(previousFile.fileLoc.pageLoc), 0);
 
                         //Store the data from the page
                         if(storfsInst->read(storfsInst, previousFile.fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, siblingBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
@@ -582,14 +588,14 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                         {
                             if(i < STORFS_HEADER_TOTAL_SIZE)
                             {
-                                siblingBuf[i] = updatedHeader[i];
+                                sendBuf[i] = updatedHeader[i];
                             }
                             else
                             {
-                                siblingBuf[i] = siblingBuf[i - STORFS_HEADER_TOTAL_SIZE];
+                                sendBuf[i] = siblingBuf[i - STORFS_HEADER_TOTAL_SIZE];
                             }
                         }
-                        if(storfsInst->write(storfsInst, previousFile.fileLoc.pageLoc, previousFile.fileLoc.byteLoc, siblingBuf, storfsInst->pageSize) != STORFS_OK)
+                        if(storfsInst->write(storfsInst, previousFile.fileLoc.pageLoc, 0, sendBuf, storfsInst->pageSize) != STORFS_OK)
                         {
                             return STORFS_WRITE_FAILED;
                         }
@@ -649,14 +655,14 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
     //Remove the file since it exists 
     if(file_delete_helper(storfsInst, currentOpenFile->fileLoc, currentOpenFile->fileInfo) != STORFS_OK)
     {
-        LOGE(TAG, "Cannot delete the old file");
+        STORFS_LOGE(TAG, "Cannot delete the old file");
         return STORFS_ERROR;
     }
     
     //Recreate file header
     if(file_header_create_helper(storfsInst, &currentOpenFile->fileInfo, currentOpenFile->fileLoc, "Deleting old file and opening new") != STORFS_OK)
     {
-        LOGE(TAG, "Cannot create the old file");
+        STORFS_LOGE(TAG, "Cannot create the old file");
         return STORFS_ERROR;
     }
 
@@ -681,12 +687,12 @@ static storfs_err_t file_delete_helper(storfs_t *storfsInst, storfs_loc_t storfs
 
     do
     {
-        LOGD(TAG, "Deleting File/Fragment At %ld%ld, %ld", (uint32_t)(delDataHeaderLoc.pageLoc >> 32),(uint32_t)(delDataHeaderLoc.pageLoc),  delDataHeaderLoc.byteLoc);
+        STORFS_LOGD(TAG, "Deleting File/Fragment At %ld%ld, %ld", (uint32_t)(delDataHeaderLoc.pageLoc >> 32),(uint32_t)(delDataHeaderLoc.pageLoc),  delDataHeaderLoc.byteLoc);
 
         //Erase the current page
         if(storfsInst->erase(storfsInst, delDataHeaderLoc.pageLoc) != STORFS_OK)
         {
-            LOGE(TAG, "Erasing page failed in function remove");
+            STORFS_LOGE(TAG, "Erasing page failed in function remove");
             return STORFS_ERROR;
         }
 
@@ -699,7 +705,7 @@ static storfs_err_t file_delete_helper(storfs_t *storfsInst, storfs_loc_t storfs
             //Store the next locations header information
             if(file_header_store_helper(storfsInst, &currHeaderInfo, delDataHeaderLoc, "") != STORFS_OK)
             {
-                LOGE(TAG, "Could not read from the current header");
+                STORFS_LOGE(TAG, "Could not read from the current header");
                 return STORFS_ERROR;
             }
         }
@@ -710,7 +716,7 @@ static storfs_err_t file_delete_helper(storfs_t *storfsInst, storfs_loc_t storfs
 
 static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t rmParentLoc, storfs_file_header_t rmParentHeader)
 {
-    LOGI(TAG, "Deleting directory and all of it's containing files");
+    STORFS_LOGI(TAG, "Deleting directory and all of it's containing files");
 
     if(file_delete_helper(storfsInst, rmParentLoc, rmParentHeader) != STORFS_OK)
     {
@@ -749,7 +755,6 @@ static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t r
                     break;
                 }
                 file_header_store_helper(storfsInst, &rmChildHeader, rmChildFileLoc, "Remove");
-                file_info_display_helper(rmChildHeader);
             }
         }
        
@@ -761,12 +766,12 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
     storfs_file_header_t firstPartInfo[2];
     uint32_t strLen = 0;
 
-    LOGI(TAG, "Mounting File System");
+    STORFS_LOGI(TAG, "Mounting File System");
 
     //If the user defined region for the first root directory byte added to the size of the header is larger than the size of a page, return an error
     if((storfsInst->firstByteLoc + STORFS_HEADER_TOTAL_SIZE) > storfsInst->pageSize)
     {
-        LOGE(TAG, "The user defined starting byte and header size is larger than the user defined page size");
+        STORFS_LOGE(TAG, "The user defined starting byte and header size is larger than the user defined page size");
         return STORFS_ERROR;
     }
 
@@ -797,7 +802,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         //Error checking
         if(strLen == 0 || (storfsInst->cachedInfo.nextOpenByte >= (storfsInst->pageCount * storfsInst->pageSize)))
         {
-            LOGE(TAG, "STORfs cannot be mounted");
+            STORFS_LOGE(TAG, "STORfs cannot be mounted");
             return STORFS_ERROR;
         }
 
@@ -818,7 +823,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         //Write data to first available memory location defined by user
         if(file_header_create_helper(storfsInst, &firstPartInfo[0], storfsInst->cachedInfo.rootLocation[0], "Root") != STORFS_OK)
         {
-            LOGE(TAG, "The filesystem could not be created at location %ld%ld, %ld", (uint32_t)(storfsInst->cachedInfo.rootLocation[0].pageLoc >> 32), \
+            STORFS_LOGE(TAG, "The filesystem could not be created at location %ld%ld, %ld", (uint32_t)(storfsInst->cachedInfo.rootLocation[0].pageLoc >> 32), \
                 (uint32_t)(storfsInst->cachedInfo.rootLocation[0].pageLoc), storfsInst->cachedInfo.rootLocation[0].byteLoc);
             return STORFS_ERROR; 
         }
@@ -835,7 +840,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         //Write data to second available memory location following the first
         if(file_header_create_helper(storfsInst, &firstPartInfo[1], storfsInst->cachedInfo.rootLocation[1], "Root") != STORFS_OK)
         {
-            LOGE(TAG, "The filesystem could not be created at location %ld%ld, %ld", (uint32_t)(storfsInst->cachedInfo.rootLocation[1].pageLoc >> 32), \
+            STORFS_LOGE(TAG, "The filesystem could not be created at location %ld%ld, %ld", (uint32_t)(storfsInst->cachedInfo.rootLocation[1].pageLoc >> 32), \
                 (uint32_t)(storfsInst->cachedInfo.rootLocation[1].pageLoc), storfsInst->cachedInfo.rootLocation[1].byteLoc);
             return STORFS_ERROR; 
         }
@@ -883,26 +888,26 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
 
 storfs_err_t storfs_mkdir(storfs_t *storfsInst, char *pathToDir)
 {   
-    LOGI(TAG, "Making Directory at %s", pathToDir);
+    STORFS_LOGI(TAG, "Making Directory at %s", pathToDir);
 
     return file_handling_helper(storfsInst, (storfs_name_t *)pathToDir, DIR_CREATE, NULL);
 }
 
 storfs_err_t storfs_touch(storfs_t *storfsInst, char *pathToFile)
 {
-    LOGI(TAG, "Making File at %s", pathToFile);
+    STORFS_LOGI(TAG, "Making File at %s", pathToFile);
 
     return file_handling_helper(storfsInst, (storfs_name_t *)pathToFile, FILE_CREATE, NULL);
 }
 
 storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode, STORFS_FILE *stream)
 {
-    LOGI(TAG, "Opening File at %s in %s mode", pathToFile, mode);
+    STORFS_LOGI(TAG, "Opening File at %s in %s mode", pathToFile, mode);
     storfs_file_flags_t fileFlags = 0;
 
     if(file_handling_helper(storfsInst, (storfs_name_t *)pathToFile, FILE_OPEN, stream) != STORFS_OK)
     {
-        LOGE(TAG, "Cannot open or create file");
+        STORFS_LOGE(TAG, "Cannot open or create file");
         goto ERR;
     }
 
@@ -958,7 +963,7 @@ storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * m
     //Set the current file flags as the file flags for the returned FILE struct
     stream->fileFlags = fileFlags;
 
-    LOGD(TAG, "File Location: %ld%ld, %ld \r\n \
+    STORFS_LOGD(TAG, "File Location: %ld%ld, %ld \r\n \
     File Flags: %d", (uint32_t)(stream->fileLoc.pageLoc >> 32), (uint32_t)(stream->fileLoc.pageLoc ), stream->fileLoc.byteLoc, fileFlags);
 
     return STORFS_OK;
@@ -972,18 +977,18 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     //Sanity Check
     if(storfsInst == NULL || stream == NULL || str == NULL || n == 0 || stream == NULL)
     {
-        LOGE(TAG, "Cannot write to file");
+        STORFS_LOGE(TAG, "Cannot write to file");
         return STORFS_ERROR;
     }
 
     //If the file is opened in read only return an error
     if(stream->fileFlags == STORFS_FILE_READ_FLAG)
     {
-        LOGE(TAG, "Cannot write to file, in read only mode");
+        STORFS_LOGE(TAG, "Cannot write to file, in read only mode");
         return STORFS_ERROR;
     }
 
-    LOGI(TAG, "Writing to file %s", stream->fileInfo.fileName);
+    STORFS_LOGI(TAG, "Writing to file %s", stream->fileInfo.fileName);
 
     uint8_t sendBuf[storfsInst->pageSize];                                    //Buffer of data to send to flash device                                      
     uint8_t headerBuf[STORFS_HEADER_TOTAL_SIZE];                              //Buffer used to store the header of each page
@@ -1054,7 +1059,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
             return STORFS_READ_FAILED;
         }
         
-        LOGD(TAG, "File Location: %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)currDataHeaderLoc.pageLoc, appendHeaderByteLoc);
+        STORFS_LOGD(TAG, "File Location: %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)currDataHeaderLoc.pageLoc, appendHeaderByteLoc);
 
         //Determine the number of iterations that must be programmed to the device
         headerLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
@@ -1087,7 +1092,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
     do
     {   
-        LOGD(TAG, "Writing File At %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)(currDataHeaderLoc.pageLoc),  currDataHeaderLoc.byteLoc);
+        STORFS_LOGD(TAG, "Writing File At %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)(currDataHeaderLoc.pageLoc),  currDataHeaderLoc.byteLoc);
 
         //Determine which type of header to store
         if(currItr > 0)
@@ -1103,7 +1108,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
             count -= (storfsInst->pageSize - headerLen);
 
             //Determine where the fragment location will be at
-            if(storfsInst->cachedInfo.nextOpenByte < BYTEPAGE_TO_LOCATION(currDataHeaderLoc.byteLoc, currDataHeaderLoc.pageLoc, storfsInst))
+            if((storfsInst->cachedInfo.nextOpenByte < BYTEPAGE_TO_LOCATION(currDataHeaderLoc.byteLoc, currDataHeaderLoc.pageLoc, storfsInst)) && currItr == 0)
             {
                 nextDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(storfsInst->cachedInfo.nextOpenByte, storfsInst);
             }
@@ -1171,7 +1176,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
             //If the programming functionality fails return an error
             if(storfsInst->write(storfsInst, currDataHeaderLoc.pageLoc, currDataHeaderLoc.byteLoc, (uint8_t *)sendBuf, sendDataLen) != STORFS_OK)
             {
-                LOGE(TAG, "Writing to memory failed in function fputs");
+                STORFS_LOGE(TAG, "Writing to memory failed in function fputs");
                 return STORFS_WRITE_FAILED;
             }
             if(storfsInst->sync(storfsInst) != STORFS_OK)
@@ -1224,16 +1229,16 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
 {
     if(stream == NULL || stream->fileFlags == STORFS_FILE_DELETED_FLAG)
     {
-        LOGE(TAG, "Cannot read from file, it does not exist");
+        STORFS_LOGE(TAG, "Cannot read from file, it does not exist");
         return STORFS_ERROR;
     }
     if(stream->fileFlags == STORFS_FILE_WRITE_FLAG || stream->fileFlags == STORFS_FILE_APPEND_FLAG)
     {
-        LOGE(TAG, "Cannot read file, in incorrect mode");
+        STORFS_LOGE(TAG, "Cannot read file, in incorrect mode");
         return STORFS_ERROR;
     }
 
-    LOGI(TAG, "Reading from file %s", stream->fileInfo.fileName);
+    STORFS_LOGI(TAG, "Reading from file %s", stream->fileInfo.fileName);
 
     int32_t recvDataItr = 0;                                    //Iterations to read from file
     uint32_t recvDataLen;                                       //Current length to read from file
@@ -1247,7 +1252,7 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
 
     do
     {
-        LOGD(TAG, "Reading File At %ld%ld, %ld", (uint32_t)(recvDataHeaderLoc.pageLoc >> 32),(uint32_t)(recvDataHeaderLoc.pageLoc),  recvDataHeaderLoc.byteLoc);
+        STORFS_LOGD(TAG, "Reading File At %ld%ld, %ld", (uint32_t)(recvDataHeaderLoc.pageLoc >> 32),(uint32_t)(recvDataHeaderLoc.pageLoc),  recvDataHeaderLoc.byteLoc);
 
         //If the receive string buffer length is greater than a page size ensure the received data will maximally be the page size   
         if((count + headerLen) > storfsInst->pageSize)
@@ -1263,7 +1268,7 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
         //Read in the data and store each page size in the buffer
         if(storfsInst->read(storfsInst, recvDataHeaderLoc.pageLoc, recvDataHeaderLoc.byteLoc, (uint8_t *)str, recvDataLen) != STORFS_OK)
         {
-            LOGE(TAG, "Reading from memory failed in function fgets");
+            STORFS_LOGE(TAG, "Reading from memory failed in function fgets");
             return STORFS_READ_FAILED;
         }
         if(storfsInst->sync(storfsInst) != STORFS_OK)
@@ -1303,7 +1308,7 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
     }
 
     STORFS_FILE rmStream;
-    LOGI(TAG, "Removing file at %s", pathToFile);
+    STORFS_LOGI(TAG, "Removing file at %s", pathToFile);
 
     //Open the file again in order to find the current parent/sibling/children
     if(file_handling_helper(storfsInst, (storfs_name_t *)pathToFile, FILE_OPEN, &rmStream) != STORFS_OK)
@@ -1366,7 +1371,7 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
             uint8_t siblingBuf[storfsInst->pageSize];
             uint8_t updatedHeader[STORFS_HEADER_TOTAL_SIZE];
 
-            LOGD(TAG, "Updating Previous File Sibling Location at the file's initial location at %ld%ld, %d", (uint32_t)(rmStream.filePrevLoc.pageLoc >> 32), (uint32_t)(rmStream.filePrevLoc.pageLoc), 0);
+            STORFS_LOGD(TAG, "Updating Previous File Sibling Location at the file's initial location at %ld%ld, %d", (uint32_t)(rmStream.filePrevLoc.pageLoc >> 32), (uint32_t)(rmStream.filePrevLoc.pageLoc), 0);
 
             if(storfsInst->read(storfsInst, rmStream.fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, siblingBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
             {
