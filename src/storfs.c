@@ -570,32 +570,24 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                     else
                     {
                         //Update the header at the previous location by re-writting the whole page
-                        uint8_t siblingBuf[storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE];
-                        uint8_t sendBuf[storfsInst->pageSize];
+                        uint8_t siblingBuf[storfsInst->pageSize];
                         uint8_t updatedHeader[STORFS_HEADER_TOTAL_SIZE];
 
                         STORFS_LOGD(TAG, "Updating Previous File Sibling Location at the file's initial location at %ld%ld, %d", (uint32_t)(previousFile.fileLoc.pageLoc >> 32), (uint32_t)(previousFile.fileLoc.pageLoc), 0);
 
                         //Store the data from the page
-                        if(storfsInst->read(storfsInst, previousFile.fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, siblingBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
+                        if(storfsInst->read(storfsInst, previousFile.fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, (siblingBuf + STORFS_HEADER_TOTAL_SIZE), (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
                         {
                             return STORFS_READ_FAILED;
                         }
 
                         //Turn the header and stored data into a programmable buffer
                         info_to_buf(updatedHeader, &previousFile.fileInfo);
-                        for(int i = 0; i < storfsInst->pageSize; i++)
+                        for(int i = 0; i < STORFS_HEADER_TOTAL_SIZE; i++)
                         {
-                            if(i < STORFS_HEADER_TOTAL_SIZE)
-                            {
-                                sendBuf[i] = updatedHeader[i];
-                            }
-                            else
-                            {
-                                sendBuf[i] = siblingBuf[i - STORFS_HEADER_TOTAL_SIZE];
-                            }
+                                siblingBuf[i] = updatedHeader[i];
                         }
-                        if(storfsInst->write(storfsInst, previousFile.fileLoc.pageLoc, 0, sendBuf, storfsInst->pageSize) != STORFS_OK)
+                        if(storfsInst->write(storfsInst, previousFile.fileLoc.pageLoc, 0, siblingBuf, storfsInst->pageSize) != STORFS_OK)
                         {
                             return STORFS_WRITE_FAILED;
                         }
@@ -651,6 +643,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
 static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *currentOpenFile)
 {
     STORFS_FILE newOpenFile = *currentOpenFile;
+    uint32_t strLen = 0;
 
     //Remove the file since it exists 
     if(file_delete_helper(storfsInst, currentOpenFile->fileLoc, currentOpenFile->fileInfo) != STORFS_OK)
@@ -660,6 +653,10 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
     }
     
     //Recreate file header
+    currentOpenFile->fileInfo.fileSize = STORFS_HEADER_TOTAL_SIZE;
+    currentOpenFile->fileInfo.fragmentLocation = 0x00;
+    while(currentOpenFile->fileInfo.fileName[strLen++] != '\0');
+    currentOpenFile->fileInfo.crc = STORFS_CRC_CALC(storfsInst, currentOpenFile->fileInfo.fileName, strLen);
     if(file_header_create_helper(storfsInst, &currentOpenFile->fileInfo, currentOpenFile->fileLoc, "Deleting old file and opening new") != STORFS_OK)
     {
         STORFS_LOGE(TAG, "Cannot create the old file");
@@ -1068,7 +1065,8 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     else
     {
         //Store the current header so it may be updated when initially writting to memory
-        file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Write Function");
+        //file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Write Function");
+        currHeaderInfo = stream->fileInfo;
 
         //If file write flag and if there is more than 1 page length of data, delete the file
         if(currHeaderInfo.fileSize > storfsInst->pageSize)

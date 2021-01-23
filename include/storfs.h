@@ -22,7 +22,7 @@
  *  cannot be less than 4 characters*/ 
 #ifndef STORFS_MAX_FILE_NAME
     #define STORFS_MAX_FILE_NAME  32
-#elif STORFS_MAX_FILE_NAME < 2
+#elif STORFS_MAX_FILE_NAME < 4
     #define STORFS_MAX_FILE_NAME  4
 #endif
 
