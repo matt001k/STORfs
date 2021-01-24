@@ -338,5 +338,10 @@ When writing to a file/fragment STORfs will determine whether or not that page/b
 
 
 
+## Future Plans for STORfs
+
+- An option to include no directories, just files under the root partition
+- Added functions to interface with storage device
+
 
 
