@@ -1,10 +1,9 @@
-<div style="text-align:center"><h1>
+<div align="center"><h1>
     STORfs Open Source File System</h1> <br>
     <h3>
         Release Version 1.0.0 <br><br>
-    	Created by: KrauseGLOBAL Solutions, LLC <br>
+    	Created by: KrauseGLOBAL Solutions, LLC <br><br>
     </h3></div>
-
 
 
 ## What is STORfs?
