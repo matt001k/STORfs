@@ -11,7 +11,7 @@
 #define STORFS_LOGD(TAG, fmt, ...)
 #define STORFS_LOGW(TAG, fmt, ...)
 #define STORFS_LOGE(TAG, fmt, ...)
-#define STORFS_LOG_DISPLAY_HEADER       //Define to display header after opening/creating/writing to a file
+#define STORFS_LOG_DISPLAY_HEADER       
 
 #define STORFS_USE_CRC
    
