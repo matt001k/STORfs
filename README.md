@@ -2,7 +2,7 @@
 
 STORfs is an open source flash file system for embedded MCUs inspired by easy portability, small footprint and well documentation. The middleware is written in C. Unlike other open source filesystems, the main goal of this project is to inform the user with as much information needed in order to port the file system into one of their projects.
 
-STORfs supports
+STORfs supports:
 
 - Wear Levelling
 - Directories and Files
@@ -10,7 +10,7 @@ STORfs supports
 - Virtually unlimited storage space
 - Easy user interface with functions
 - Small footprint
-  - Compiling as low as 7660 Bytes (*compiled with gcc arm*)
+  - Compiling as low as 5764 Bytes (*compiled with gcc arm7*)
 
 
 ## Porting STORfs
@@ -198,7 +198,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName);
 ```
 
 - Mounts the file system at the dedicated partition name
-
+- File system must always be mounted before using the file system, even if the file system is already instantiated
 - Partition name can be NULL if the file system is already instantiated
 - All files branch from this partition
 
@@ -264,7 +264,7 @@ The following pictures how files/directories are laid out within the system:
 
 <div style="text-align:center"><img src="Documentation\images\STORfs_Layout.svg" /></div>
 
-Files may only have siblings whereas directories have the ability to have children and siblings. 
+Files may only have siblings whereas directories have the ability to have children and siblings. Each item in the file system is connected to one another via a header which has information about the items child/sibling/fragment location (depending on item's type).
 
 
 
@@ -298,58 +298,45 @@ An in depth look is shown below:
 
 As can be seen, fragment headers of files are much smaller as to allow for as much storage space as possible for a file.
 
+### ROOT Directory
 
+The root directory has information pertaining to the next available byte to write to within the storage space. This information is cached within the file systems main structure `storfs_t` and is updated whenever files are added, or removed from the system. This way, STORfs knows where next to write a file on the fly. Having this information written to root directory header ensures that even on power down, when mounting the file system again on boot, this information will be easily grabbed and applied to that cache.
 
 ### CRC Information
 
 CRC is calculated differently depending on the type of item being stored in the file system.
 
-The root and directories will calculate the CRC based on its filename along with very newly created files. 
+The root and directories will calculate the CRC based on its **filename** along with very newly created files. 
 
 *Ex:* If the root name is *C:* the CRC will be calculated based on the 2 bytes of the file name, this is depending on the formula provided by the user or the already designed CRC function in storfs.c
 
-Files (previously created and either written to or appended to) will utilize the data written to its page/section to determine the CRC. Each fragment section will utilize the data written to that page/section to calculate the CRC of that fragment as well.
+Files (previously created and either written to or appended to) will utilize the **data written to its page/block** to determine the CRC. Each fragment section will utilize the data written to that page/block to calculate the CRC of that fragment as well.
 
-When writing to a file/fragment STORfs will determine whether or not that page/section is bad by reading the data just written to the page/section and calculating the CRC from the read data. If the CRC calculated does not match the header CRC, STORfs will find the next available page/section and check that section, this process goes on until a good page/section is available.
+When writing to a file/fragment STORfs will determine whether or not that page/block is bad by reading the data just written to the page/section and calculating the CRC from the read data. If the CRC calculated does not match the header CRC, STORfs will find the next available page/section and check that section, this process goes on until a good page/section is available. This is how wear-levelling is implemented in STORfs.
 
 
 
-## STORfs Software Design
+## STORfs Compiled Sizes
 
-The following include flowcharts and other pertinent data related to the design of the STORfs file system:
+| Compiler | Size (in bytes) |
+| :------: | :-------------: |
+| GCC ARM7 |      5764       |
+| Others to Come Soon... | |
 
-#### STORfs_mkdir
 
-mkdir will create a directory within the STORfs file system.
 
-<div style="text-align:center"><img src="Documentation\images\STORfs_mkdir.svg" /></div>
 
-#### STORfs_touch
+## Other Information Regarding STORfs
 
-touch will make a file within the STORfs file system
+- A software overview can be found in Documentation/software_overview including flowcharts and other information regarding the design of the functions within STORfs
+- Contributing guidelines can be found under the documentation directory
+- Examples can be found under the examples directory
+  - Example to be ran on a PC is under the directory test
+  - MCU application testing is found under:
+    - function_compatibility
+    - mcu_application
 
-<div style="text-align:center"><img src="Documentation\images\STORfs_touch.svg" /></div>
 
-#### STORfs_fopen
 
-fopen will open a file within the file system in the declared mode by the user
 
-<div style="text-align:center"><img src="Documentation\images\STORfs_fopen.svg" /></div>
 
-#### STORfs_fputs
-
-fputs will write/append to a file within the file system
-
-<div style="text-align:center"><img src="Documentation\images\STORfs_fputs.svg" /></div>
-
-### STORfs_fgets
-
-fgets will obtain data from a file within a file directory
-
-<div style="text-align:center"><img src="Documentation\images\STORfs_fgets.svg" /></div>
-
-#### STORfs_rm
-
-rm will remove a whole directory or a single file from the filesystem
-
-<div style="text-align:center"><img src="Documentation\images\STORfs_rm.svg" /></div>
