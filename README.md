@@ -1,3 +1,12 @@
+<div style="text-align:center"><h1>
+    STORfs Open Source File System</h1> <br>
+    <h3>
+        Release Version 1.0.0 <br><br>
+    	Created by: KrauseGLOBAL Solutions, LLC <br>
+    </h3></div>
+
+
+
 # STORfs 
 
 STORfs is an open source flash file system for embedded MCUs inspired by easy portability, small footprint and well documentation. The middleware is written in C. Unlike other open source filesystems, the main goal of this project is to inform the user with as much information needed in order to port the file system into one of their projects.
