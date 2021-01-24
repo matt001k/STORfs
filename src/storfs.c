@@ -657,11 +657,20 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
     currentOpenFile->fileInfo.fragmentLocation = 0x00;
     while(currentOpenFile->fileInfo.fileName[strLen++] != '\0');
     currentOpenFile->fileInfo.crc = STORFS_CRC_CALC(storfsInst, currentOpenFile->fileInfo.fileName, strLen);
-    if(file_header_create_helper(storfsInst, &currentOpenFile->fileInfo, currentOpenFile->fileLoc, "Deleting old file and opening new") != STORFS_OK)
+    while(1)
     {
-        STORFS_LOGE(TAG, "Cannot create the old file");
-        return STORFS_ERROR;
+        if(file_header_create_helper(storfsInst, &currentOpenFile->fileInfo, currentOpenFile->fileLoc, "Deleting old file and opening new") != STORFS_OK)
+        {
+            STORFS_LOGE(TAG, "Cannot create the old file");
+            return STORFS_ERROR;
+        }
+        if(crc_header_check(storfsInst, currentOpenFile->fileLoc) == STORFS_OK)
+        {
+                break;
+        }
+        find_next_open_byte_helper(storfsInst, &currentOpenFile->fileLoc);
     }
+    
 
     //Find the next available open byte
     if(find_update_next_open_byte(storfsInst, newOpenFile.fileLoc) != STORFS_OK)
@@ -814,7 +823,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         firstPartInfo[0].reserved = 0xFFFF;
         firstPartInfo[0].fragmentLocation = storfsInst->cachedInfo.nextOpenByte;
         firstPartInfo[0].fileSize = STORFS_HEADER_TOTAL_SIZE * 2;
-        firstPartInfo[0].crc = STORFS_CRC_CALC(storfs, firstPartInfo[0].fileName, strLen);
+        firstPartInfo[0].crc = STORFS_CRC_CALC(storfsInst, firstPartInfo[0].fileName, strLen);
         firstPartInfo[1] = firstPartInfo[0];
 
         //Write data to first available memory location defined by user
@@ -1209,7 +1218,10 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
 
     //Store the updated header into the file information
-    file_header_store_helper(storfsInst,  &stream->fileInfo, stream->fileLoc, "Updated FILE");
+    if(file_header_store_helper(storfsInst,  &stream->fileInfo, stream->fileLoc, "Updated FILE") != STORFS_OK)
+    {
+        return STORFS_ERROR;
+    }
     
     //Find and update the next open byte available if the next open byte is currently larger than the file's location
     if(storfsInst->cachedInfo.nextOpenByte <= BYTEPAGE_TO_LOCATION(currDataHeaderLoc.byteLoc, currDataHeaderLoc.pageLoc, storfsInst))
@@ -1246,7 +1258,24 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
     storfs_loc_t recvDataHeaderLoc = stream->fileLoc;           //the location of the current file header in memory
     
     recvDataHeaderLoc.byteLoc = stream->fileLoc.byteLoc + headerLen;
-    recvDataItr = (stream->fileInfo.fileSize + storfsInst->pageSize) / storfsInst->pageSize;
+    
+    //Determine the number of iterations needed to read from the file
+    if(count < stream->fileInfo.fileSize)
+    {
+        if(count > storfsInst->pageSize)
+        {
+            recvDataItr = (count + STORFS_HEADER_TOTAL_SIZE + ((count / storfsInst->pageSize) * STORFS_FRAGMENT_HEADER_TOTAL_SIZE) + storfsInst->pageSize) / storfsInst->pageSize;
+        }
+        else
+        {
+            recvDataItr = (count + STORFS_HEADER_TOTAL_SIZE + storfsInst->pageSize) / storfsInst->pageSize;
+        }
+    }
+    else
+    {
+        recvDataItr = (stream->fileInfo.fileSize + storfsInst->pageSize) / storfsInst->pageSize;
+    }
+    
 
     do
     {
