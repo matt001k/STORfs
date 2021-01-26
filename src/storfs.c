@@ -103,7 +103,7 @@ static storfs_err_t file_header_store_helper(storfs_t *storfsInst, storfs_file_h
 static void file_info_display_helper(storfs_file_header_t storfsInfo);
 
 /** @brief Functions to find the next available page to write to and to update the next available byte for the user cache */
-static void update_root_next_open_byte(storfs_t *storfsInst, storfs_size_t fileLocation);
+static storfs_err_t update_root_next_open_byte(storfs_t *storfsInst, storfs_size_t fileLocation);
 static storfs_err_t find_next_open_byte_helper (storfs_t *storfsInst, storfs_loc_t *storfsLoc);
 
 /** @brief Function to handle opening/creating new files, most important function of STORfs */
@@ -367,7 +367,7 @@ static storfs_err_t file_header_store_helper(storfs_t *storfsInst, storfs_file_h
         return status;
 }
 
-static void update_root_next_open_byte(storfs_t *storfsInst, storfs_size_t fileLocation)
+static storfs_err_t update_root_next_open_byte(storfs_t *storfsInst, storfs_size_t fileLocation)
 {
     //Update the cached information with the next open byte
     storfsInst->cachedInfo.nextOpenByte = fileLocation;
@@ -377,9 +377,18 @@ static void update_root_next_open_byte(storfs_t *storfsInst, storfs_size_t fileL
     storfsInst->cachedInfo.rootHeaderInfo[1].fragmentLocation = fileLocation;
 
     //Update both root registers
+    if(storfsInst->erase(storfsInst, storfsInst->cachedInfo.rootLocation[0].pageLoc) != STORFS_OK)
+    {
+        return STORFS_ERROR;
+    }
     file_header_create_helper(storfsInst, &storfsInst->cachedInfo.rootHeaderInfo[0], storfsInst->cachedInfo.rootLocation[0], "Root Header 1");
+    if(storfsInst->erase(storfsInst, storfsInst->cachedInfo.rootLocation[1].pageLoc) != STORFS_OK)
+    {
+        return STORFS_ERROR;
+    }
     file_header_create_helper(storfsInst, &storfsInst->cachedInfo.rootHeaderInfo[1], storfsInst->cachedInfo.rootLocation[1], "Root Header 1");
 
+    return STORFS_OK;
 }
 
 static storfs_err_t find_next_open_byte_helper (storfs_t *storfsInst, storfs_loc_t *storfsLoc)
@@ -548,9 +557,18 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                 }
 
                 //Determine whether the previous file's child location or sibling location register has to be updated
-                if(previousFile.filePrevFlags == STORFS_FILE_PARENT_FLAG)
+                if(previousFile.filePrevLoc.pageLoc == storfsInst->firstPageLoc)
+                {
+                    storfsInst->cachedInfo.rootHeaderInfo[0].childLocation = previousFile.fileInfo.childLocation;
+                    storfsInst->cachedInfo.rootHeaderInfo[1].childLocation = previousFile.fileInfo.childLocation;
+                }
+                else if(previousFile.filePrevFlags == STORFS_FILE_PARENT_FLAG)
                 {
                     previousFile.fileInfo.childLocation = BYTEPAGE_TO_LOCATION(currentLocation.byteLoc, currentLocation.pageLoc, storfsInst);
+                    if(storfsInst->erase(storfsInst, previousFile.fileLoc.pageLoc) != STORFS_OK)
+                    {
+                        return STORFS_ERROR;
+                    }
                     if(file_header_create_helper(storfsInst, &previousFile.fileInfo, previousFile.fileLoc, "") != STORFS_OK)
                     {
                         return STORFS_ERROR;
@@ -562,6 +580,10 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                     //If the previous file is a directory simply update the header, if not read in the data of the original file page and update the page with a new header
                     if((previousFile.fileInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) != STORFS_INFO_REG_FILE_TYPE_FILE)
                     {
+                        if(storfsInst->erase(storfsInst, previousFile.fileLoc.pageLoc) != STORFS_OK)
+                        {
+                            return STORFS_ERROR;
+                        }
                         if(file_header_create_helper(storfsInst, &previousFile.fileInfo, previousFile.fileLoc, "") != STORFS_OK)
                         {
                             return STORFS_ERROR;
@@ -579,6 +601,12 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                         if(storfsInst->read(storfsInst, previousFile.fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, (siblingBuf + STORFS_HEADER_TOTAL_SIZE), (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
                         {
                             return STORFS_READ_FAILED;
+                        }
+
+                        //Erase the page so it may be written to
+                        if(storfsInst->erase(storfsInst, previousFile.fileLoc.pageLoc) != STORFS_OK)
+                        {
+                            return STORFS_ERROR;
                         }
 
                         //Turn the header and stored data into a programmable buffer
@@ -798,7 +826,16 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
     //If file is empty create the root partition within the user defined parameters
     //The system will use two headers for the root
     if(((firstPartInfo[0].fileInfo & STORFS_INFO_REG_BLOCK_SIGN_EMPTY) == 0x60) || ((firstPartInfo[1].fileInfo & STORFS_INFO_REG_BLOCK_SIGN_EMPTY) == 0x60))
-    {        
+    {      
+        //Ensure that both of the roots are cleared
+        if(storfsInst->erase(storfsInst, storfsInst->cachedInfo.rootLocation[0].pageLoc) != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }  
+        if(storfsInst->erase(storfsInst, storfsInst->cachedInfo.rootLocation[1].pageLoc) != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }
         //Set next open byte
         storfsInst->cachedInfo.nextOpenByte = ((storfsInst->cachedInfo.rootLocation[1].pageLoc + 1) * storfsInst->pageSize);
 
@@ -1033,6 +1070,14 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         {
             return STORFS_READ_FAILED;
         }
+
+        //Delete the file header so it may be written to
+        if(storfsInst->erase(storfsInst, currDataHeaderLoc.pageLoc) != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }
+
+        //Write the new file header with the updated information
         info_to_buf(sendBuf, &currHeaderInfo);
         for(int i = STORFS_HEADER_TOTAL_SIZE; i < storfsInst->pageSize; i++)
         {
@@ -1064,12 +1109,18 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         {
             return STORFS_READ_FAILED;
         }
+        //Delete the page from memory so it may be re-written
+        if(storfsInst->erase(storfsInst, currDataHeaderLoc.pageLoc) != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }
         
         STORFS_LOGD(TAG, "File Location: %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)currDataHeaderLoc.pageLoc, appendHeaderByteLoc);
 
         //Determine the number of iterations that must be programmed to the device
         headerLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
         sendDataItr = (count + storfsInst->pageSize) / (storfsInst->pageSize - STORFS_FRAGMENT_HEADER_TOTAL_SIZE);
+        nextDataHeaderLoc = currDataHeaderLoc;
     }
     else
     {
@@ -1372,9 +1423,19 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
     file_header_store_helper(storfsInst, &storfsPreviousHeader, rmStream.filePrevLoc, "Previous");
 
     //Update the child or sibling directory of the previous file location
-    if(rmStream.filePrevFlags == STORFS_FILE_PARENT_FLAG)
+    if(rmStream.filePrevLoc.pageLoc == storfsInst->firstPageLoc)
+    {
+        storfsInst->cachedInfo.rootHeaderInfo[0].childLocation = rmStream.fileInfo.siblingLocation;
+        storfsInst->cachedInfo.rootHeaderInfo[1].childLocation = rmStream.fileInfo.siblingLocation;
+    }
+    else if(rmStream.filePrevFlags == STORFS_FILE_PARENT_FLAG)
     {
         storfsPreviousHeader.childLocation = rmStream.fileInfo.siblingLocation;
+        //Remove the header from storage so it may be re-written
+        if(storfsInst->erase(storfsInst, rmStream.filePrevLoc.pageLoc) != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }
         if(file_header_create_helper(storfsInst, &storfsPreviousHeader, rmStream.filePrevLoc, "") != STORFS_OK)
         {
             return STORFS_ERROR;
@@ -1388,6 +1449,11 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
          //If the previous file is a directory simply update the header, if not read in the data of the original file page and update the page with a new header
         if((storfsPreviousHeader.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
         {
+            //Remove the header from storage so it may be re-written
+            if(storfsInst->erase(storfsInst, rmStream.filePrevLoc.pageLoc) != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
             if(file_header_create_helper(storfsInst, &storfsPreviousHeader, rmStream.filePrevLoc, "") != STORFS_OK)
             {
                 return STORFS_ERROR;
@@ -1405,6 +1471,11 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
                 return STORFS_READ_FAILED;
             }
 
+            //Remove the header from storage so it may be re-written
+            if(storfsInst->erase(storfsInst, rmStream.filePrevLoc.pageLoc) != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
 
             info_to_buf(updatedHeader, &storfsPreviousHeader);
             for(int i = 0; i < storfsInst->pageSize; i++)

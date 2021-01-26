@@ -105,7 +105,6 @@ int main(void) {
     display_cache(fs);
     
     //Test opening and creating files
-    
     storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+", &file1);
     storfs_touch(&fs, "C:/HelloDere/hello.txt");
     storfs_fopen(&fs, "C:/HelloDere/hello.txt", "w+", &file1);
