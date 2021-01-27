@@ -1,7 +1,7 @@
 <div align="center"><h1>
     STORfs Open Source File System</h1> <br>
     <h3>
-        Release Version 1.0.0 <br><br>
+        Release Version 1.0.1 <br><br>
     	Created by: KrauseGLOBAL Solutions, LLC <br><br>
     </h3></div>
 
@@ -22,6 +22,10 @@ STORfs supports:
 
 
 ## Porting STORfs
+
+STORfs makes the assumption:
+- Read/Write and Erase operations are of the same size
+  - ex: If the erase operation of the storage device is 4kB then the operations of reading/writing will be at that same value the user must modify the function pointers associated correctly to accommodate if they are not the same size
 
 The most basic needed structure for the file system is as follows:
 
@@ -343,12 +347,15 @@ When writing to a file/fragment STORfs will determine whether or not that page/b
   - MCU application testing is found under:
     - function_compatibility
     - mcu_application
+- Revision updates may be found under Documentation/revision_notes
 
 
 
 ## Future Plans for STORfs
 
 - An option to include no directories, just files under the root partition
+- Journalling System
+- Smart relocatable root headers (further wear-handling)
 - Added functions to interface with storage device
 
 

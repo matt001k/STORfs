@@ -522,6 +522,12 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
             {
                 STORFS_LOGD(TAG, "Name not matched, and no siblings, creating file/directory at next open location");
 
+                //Error is next write is larger than the page count
+                if(LOCATION_TO_PAGE(storfsInst->cachedInfo.nextOpenByte, storfsInst) >= storfsInst->pageCount)
+                {
+                    STORFS_LOGE(TAG, "Cannot write any more data to the file system");
+                }
+
                 //File's cannot be children of other files
                 if(fileSepCnt > 1)
                 {
@@ -1022,6 +1028,12 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     {
         STORFS_LOGE(TAG, "Cannot write to file");
         return STORFS_ERROR;
+    }
+
+    //Error is next write is larger than the page count
+    if(LOCATION_TO_PAGE(storfsInst->cachedInfo.nextOpenByte, storfsInst) >= storfsInst->pageCount)
+    {
+        STORFS_LOGE(TAG, "Cannot write any more data to the file system");
     }
 
     //If the file is opened in read only return an error
