@@ -1,7 +1,7 @@
 <div align="center"><h1>
     STORfs Open Source File System</h1> <br>
     <h3>
-        Release Version 1.0.1 <br><br>
+        Release Version 1.0.2 <br><br>
     	Created by: KrauseGLOBAL Solutions, LLC <br><br>
     </h3></div>
 
