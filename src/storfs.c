@@ -1062,7 +1062,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     int32_t appendHeaderByteLoc = 0;                                          //Location of the data to be appended onto the current buffer
     uint8_t currDataBuf[storfsInst->pageSize];                                //Buffer to send data in the case of an append 
 
-    //Get update file information
+    //Get updated file information
     if(file_header_store_helper(storfsInst, &stream->fileInfo, stream->fileLoc, "Updated") != STORFS_OK)
     {
         return STORFS_ERROR;
@@ -1076,30 +1076,6 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         //Store the current header
         currHeaderInfo = stream->fileInfo;
 
-        //Update the file size register in the header of the file
-        currHeaderInfo.fileSize = updatedFileSize;
-        if(storfsInst->read(storfsInst, currDataHeaderLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, currDataBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
-        {
-            return STORFS_READ_FAILED;
-        }
-
-        //Delete the file header so it may be written to
-        if(storfsInst->erase(storfsInst, currDataHeaderLoc.pageLoc) != STORFS_OK)
-        {
-            return STORFS_ERROR;
-        }
-
-        //Write the new file header with the updated information
-        info_to_buf(sendBuf, &currHeaderInfo);
-        for(int i = STORFS_HEADER_TOTAL_SIZE; i < storfsInst->pageSize; i++)
-        {
-            sendBuf[i] = currDataBuf[i - STORFS_HEADER_TOTAL_SIZE];
-        }
-        if(storfsInst->write(storfsInst, currDataHeaderLoc.pageLoc, 0, sendBuf, storfsInst->pageSize) != STORFS_OK)
-        {
-            return STORFS_WRITE_FAILED;
-        }
-
         //Find the current location of the header to be appended on to
         currDataHeaderLoc.byteLoc = 0;
         while(currHeaderInfo.fragmentLocation != 0x00)
@@ -1107,31 +1083,92 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
             currDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(currHeaderInfo.fragmentLocation, storfsInst);
             file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Append");
         }
-
-        //Append needed to write onto the current buffer length
-        appendHeaderByteLoc = (stream->fileInfo.fileSize % storfsInst->pageSize) - STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
-        if(appendHeaderByteLoc < 0)
+       
+        //If the location of the next available byte is greater than the files original location...
+        if(currDataHeaderLoc.pageLoc != stream->fileLoc.pageLoc)
         {
-            appendHeaderByteLoc = 0;
+            STORFS_LOGD(TAG, "Appending to file fragment");
+
+            //Append needed to write onto the current buffer length
+            appendHeaderByteLoc = (stream->fileInfo.fileSize % storfsInst->pageSize) - STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
+            if(appendHeaderByteLoc < 0)
+            {
+                appendHeaderByteLoc = 0;
+            }
+
+            //Update the file size register in the header of the file
+            stream->fileInfo.fileSize = updatedFileSize;
+            if(storfsInst->read(storfsInst, stream->fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, currDataBuf, (storfsInst->pageSize - STORFS_HEADER_TOTAL_SIZE)) != STORFS_OK)
+            {
+                return STORFS_READ_FAILED;
+            }
+
+            //Delete the file header so it may be written to
+            if(storfsInst->erase(storfsInst, stream->fileLoc.pageLoc) != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
+
+            //Write the new file header with the updated information
+            info_to_buf(sendBuf, &stream->fileInfo);
+            for(int i = STORFS_HEADER_TOTAL_SIZE; i < storfsInst->pageSize; i++)
+            {
+                sendBuf[i] = currDataBuf[i - STORFS_HEADER_TOTAL_SIZE];
+            }
+            if(storfsInst->write(storfsInst,  stream->fileLoc.pageLoc, 0, sendBuf, storfsInst->pageSize) != STORFS_OK)
+            {
+                return STORFS_WRITE_FAILED;
+            }
+
+            //Read in the current header of the data buffer
+            if(storfsInst->read(storfsInst, currDataHeaderLoc.pageLoc, STORFS_FRAGMENT_HEADER_TOTAL_SIZE, currDataBuf, appendHeaderByteLoc) != STORFS_OK)
+            {
+                return STORFS_READ_FAILED;
+            }
+            //Delete the page from memory so it may be re-written
+            if(storfsInst->erase(storfsInst, currDataHeaderLoc.pageLoc) != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
+
+            //Set the header length to fragment header size
+            headerLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
         }
+        else
+        {
+            STORFS_LOGD(TAG, "Appending to file head");
+
+            //Append needed to write onto the current buffer length
+            appendHeaderByteLoc = stream->fileInfo.fileSize - STORFS_HEADER_TOTAL_SIZE;
+            if(appendHeaderByteLoc < 0)
+            {
+                appendHeaderByteLoc = 0;
+            }
+
+            //Read in the current header of the data buffer
+            if(storfsInst->read(storfsInst, stream->fileLoc.pageLoc, STORFS_HEADER_TOTAL_SIZE, currDataBuf, appendHeaderByteLoc) != STORFS_OK)
+            {
+                return STORFS_READ_FAILED;
+            }
+            //Delete the page from memory so it may be re-written
+            if(storfsInst->erase(storfsInst, stream->fileLoc.pageLoc) != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
+
+            //Set the current filesize information
+            currHeaderInfo.fileSize = updatedFileSize;
+        }
+
+        //Adjust the count of data to be written to
         count+=appendHeaderByteLoc;
-
-        //Read in the current header of the data buffer
-        if(storfsInst->read(storfsInst, currDataHeaderLoc.pageLoc, STORFS_FRAGMENT_HEADER_TOTAL_SIZE, currDataBuf, appendHeaderByteLoc) != STORFS_OK)
-        {
-            return STORFS_READ_FAILED;
-        }
-        //Delete the page from memory so it may be re-written
-        if(storfsInst->erase(storfsInst, currDataHeaderLoc.pageLoc) != STORFS_OK)
-        {
-            return STORFS_ERROR;
-        }
         
-        STORFS_LOGD(TAG, "File Location: %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)currDataHeaderLoc.pageLoc, appendHeaderByteLoc);
+        STORFS_LOGD(TAG, "File Location: %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)currDataHeaderLoc.pageLoc, appendHeaderByteLoc + headerLen);
 
         //Determine the number of iterations that must be programmed to the device
-        headerLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
         sendDataItr = (count + storfsInst->pageSize) / (storfsInst->pageSize - STORFS_FRAGMENT_HEADER_TOTAL_SIZE);
+        
+        //Set the next data header location to this location
         nextDataHeaderLoc = currDataHeaderLoc;
     }
     else
@@ -1140,11 +1177,8 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         //file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Write Function");
         currHeaderInfo = stream->fileInfo;
 
-        //If file write flag and if there is more than 1 page length of data, delete the file
-        if(currHeaderInfo.fileSize > storfsInst->pageSize)
-        {
-            file_delete_helper(storfsInst, currDataHeaderLoc, currHeaderInfo);
-        }
+        // Delete the file to be written to
+        file_delete_helper(storfsInst, currDataHeaderLoc, currHeaderInfo);
 
         //Update the file size register
         updatedFileSize = STORFS_HEADER_TOTAL_SIZE + n + ((n / (storfsInst->pageSize - STORFS_FRAGMENT_HEADER_TOTAL_SIZE)) * STORFS_FRAGMENT_HEADER_TOTAL_SIZE);
@@ -1264,7 +1298,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         --sendDataItr;
 
         //Increment the buffer's location to send data
-        str += sendDataLen - headerLen - appendHeaderByteLoc;
+        str += (sendDataLen - headerLen - appendHeaderByteLoc) * sizeof(uint8_t);
 
         //Set current header location equal to the next
         currDataHeaderLoc = nextDataHeaderLoc;
@@ -1381,8 +1415,7 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
             recvDataHeaderLoc.byteLoc = headerLen;
 
             //Increment the buffer's location to store data
-            str += recvDataLen;
-            
+            str += recvDataLen * sizeof(uint8_t);
         }
     } while (recvDataItr > 0);
     

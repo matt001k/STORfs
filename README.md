@@ -336,6 +336,11 @@ When writing to a file/fragment STORfs will determine whether or not that page/b
 | Others to Come Soon... | |
 
 
+## Tested Hardware
+STORfs has been tested and validated on the following hardware:
+- Adesto
+  - AT25SF321B
+  - AT45DB321E
 
 
 ## Other Information Regarding STORfs
