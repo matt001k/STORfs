@@ -16,6 +16,17 @@
       *strLen += 1; \
     } while(str[*(strLen)-1] != '\0');
 
+/** @brief Wear handling enum */ 
+typedef enum {
+    WRITE_UNLOADED = 0x0UL,
+    WRITE_LOADED
+} wear_level_state_t;
+
+typedef enum {
+    WEAR_FPUTS = 0x0UL,
+    WEAR_CREATE,
+} wear_level_enum_t;
+
 typedef enum {
     FILE_WRITE = 0x0UL,
     FILE_READ,
@@ -115,6 +126,10 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
 /** @brief Helper functions to delete directories and files */
 static storfs_err_t file_delete_helper(storfs_t *storfsInst, storfs_loc_t storfsLoc, storfs_file_header_t storfsInfo);
 static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t rmParentLoc, storfs_file_header_t rmParentHeader);
+
+/** @brief Functions used for wear levelling */
+static storfs_err_t header_wear_level_helper(storfs_t* storfsInst, storfs_file_header_t *storfsCurrInfo, storfs_loc_t *storfsCurrLoc);
+static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, uint8_t *sendBuf, storfs_loc_t *storfsCurrLoc, uint32_t sendDataLen, uint32_t headerLen);
 
 static storfs_err_t crc_compare(storfs_t *storfsInst, storfs_file_header_t storfsInfo, const uint8_t *buf, uint32_t bufLen)
 {
@@ -528,7 +543,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                     STORFS_LOGE(TAG, "Cannot write any more data to the file system");
                 }
 
-                //File's cannot be children of other files
+                //Files cannot be children of other files
                 if(fileSepCnt > 1)
                 {
                     STORFS_LOGE(TAG, "File/directory cannot be a child of another file");
@@ -562,6 +577,12 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                     currentDirInfo.fileInfo = STORFS_INFO_REG_FILE_TYPE_FILE | STORFS_INFO_REG_BLOCK_SIGN_PART_FULL;
                 }
 
+                //Write the header to the current location with wear levelling 
+                if(header_wear_level_helper(storfsInst, &currentDirInfo, &currentLocation) != STORFS_OK)
+                {
+                    return STORFS_ERROR;
+                }               
+
                 //Determine whether the previous file's child location or sibling location register has to be updated
                 if(previousFile.filePrevLoc.pageLoc == storfsInst->firstPageLoc)
                 {
@@ -570,6 +591,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                 }
                 else if(previousFile.filePrevFlags == STORFS_FILE_PARENT_FLAG)
                 {
+                    //TODO: Wear levelling
                     previousFile.fileInfo.childLocation = BYTEPAGE_TO_LOCATION(currentLocation.byteLoc, currentLocation.pageLoc, storfsInst);
                     if(storfsInst->erase(storfsInst, previousFile.fileLoc.pageLoc) != STORFS_OK)
                     {
@@ -584,6 +606,7 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                 {
                     previousFile.fileInfo.siblingLocation = BYTEPAGE_TO_LOCATION(currentLocation.byteLoc, currentLocation.pageLoc, storfsInst);
                     //If the previous file is a directory simply update the header, if not read in the data of the original file page and update the page with a new header
+                     //TODO: Wear levelling
                     if((previousFile.fileInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) != STORFS_INFO_REG_FILE_TYPE_FILE)
                     {
                         if(storfsInst->erase(storfsInst, previousFile.fileLoc.pageLoc) != STORFS_OK)
@@ -626,20 +649,6 @@ static storfs_err_t file_handling_helper(storfs_t *storfsInst, storfs_name_t *pa
                             return STORFS_WRITE_FAILED;
                         }
                     }
-                }
-
-                while(1)
-                {
-                    //Create the header for the new file/directory
-                    if(file_header_create_helper(storfsInst, &currentDirInfo, currentLocation, "") != STORFS_OK)
-                    {
-                        return STORFS_ERROR;
-                    }
-                    if(crc_header_check(storfsInst, currentLocation) == STORFS_OK)
-                    {
-                        break;
-                    }
-                    find_next_open_byte_helper(storfsInst, &currentLocation);
                 }
 
                 //Display the newly created file information
@@ -798,6 +807,70 @@ static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t r
             }
         }
        
+    return STORFS_OK;
+}
+
+static storfs_err_t header_wear_level_helper(storfs_t* storfsInst,  storfs_file_header_t *storfsCurrInfo, storfs_loc_t *storfsCurrLoc)
+{
+    wear_level_state_t state = WRITE_UNLOADED;
+
+    while(1)
+    {
+        //Create the header for the new file/directory
+        if(file_header_create_helper(storfsInst, storfsCurrInfo, *storfsCurrLoc, "") != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }
+        if(storfsInst->sync(storfsInst) != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }
+
+        //If CRC returned correctly, break
+        if(crc_header_check(storfsInst, *storfsCurrLoc) == STORFS_OK)
+        {
+            break;
+        }
+        
+        //If not returned correctly move to a new location
+        find_next_open_byte_helper(storfsInst, storfsCurrLoc);
+
+        if(state == WRITE_UNLOADED)
+        {
+            state = WRITE_LOADED;
+        }
+    }
+
+
+    return STORFS_OK;
+}
+
+static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, uint8_t *sendBuf, storfs_loc_t *storfsCurrLoc, uint32_t sendDataLen, uint32_t headerLen)
+{
+    STORFS_LOGD(TAG, "Writing File At %ld%ld, %ld", (uint32_t)(storfsCurrLoc->pageLoc >> 32),(uint32_t)(storfsCurrLoc->pageLoc), storfsCurrLoc->byteLoc);
+
+    //Write to the area in memory and then check the crc and determine if that page in memory is worn/not usable
+    while(1)
+    {
+        //If the programming functionality fails return an error
+        if(storfsInst->write(storfsInst, storfsCurrLoc->pageLoc, storfsCurrLoc->byteLoc, sendBuf, sendDataLen) != STORFS_OK)
+        {
+            STORFS_LOGE(TAG, "Writing to memory failed in function fputs");
+            return STORFS_WRITE_FAILED;
+        }
+        if(storfsInst->sync(storfsInst) != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }
+        if(crc_file_check(storfsInst, *storfsCurrLoc, (sendDataLen - headerLen)) == STORFS_OK)
+        {
+            break;
+        }
+
+        //If CRC returns incorrectly, update previous header fragment/child/sibling location
+        find_next_open_byte_helper(storfsInst, storfsCurrLoc);
+    }
+
     return STORFS_OK;
 }
 
@@ -1030,7 +1103,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         return STORFS_ERROR;
     }
 
-    //Error is next write is larger than the page count
+    //Error if next write is larger than the page count
     if(LOCATION_TO_PAGE(storfsInst->cachedInfo.nextOpenByte, storfsInst) >= storfsInst->pageCount)
     {
         STORFS_LOGE(TAG, "Cannot write any more data to the file system");
@@ -1196,8 +1269,6 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
     do
     {   
-        STORFS_LOGD(TAG, "Writing File At %ld%ld, %ld", (uint32_t)(currDataHeaderLoc.pageLoc >> 32),(uint32_t)(currDataHeaderLoc.pageLoc),  currDataHeaderLoc.byteLoc);
-
         //Determine which type of header to store
         if(currItr > 0)
         {
@@ -1274,25 +1345,12 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
             sendBuf[i] = headerBuf[i];
         }
 
-        //Write to the area in memory and then check the crc and determine if that page in memory is worn/not usable
-        while(1)
+        if(write_wear_level_helper(storfsInst, (uint8_t*)sendBuf, &currDataHeaderLoc, sendDataLen, headerLen) != STORFS_OK)
         {
-            //If the programming functionality fails return an error
-            if(storfsInst->write(storfsInst, currDataHeaderLoc.pageLoc, currDataHeaderLoc.byteLoc, (uint8_t *)sendBuf, sendDataLen) != STORFS_OK)
-            {
-                STORFS_LOGE(TAG, "Writing to memory failed in function fputs");
-                return STORFS_WRITE_FAILED;
-            }
-            if(storfsInst->sync(storfsInst) != STORFS_OK)
-            {
-                return STORFS_ERROR;
-            }
-            if(crc_file_check(storfsInst, currDataHeaderLoc, (sendDataLen - headerLen)) == STORFS_OK)
-            {
-                break;
-            }
-            find_next_open_byte_helper(storfsInst, &currDataHeaderLoc);
+            return STORFS_ERROR;
         }
+
+        STORFS_LOGW(TAG, "Previous File Location: %ld, %ld, %ld", (uint32_t)(stream->filePrevLoc.pageLoc >> 32), (uint32_t)(stream->filePrevLoc.pageLoc), stream->filePrevLoc.byteLoc);
 
         //Decrement the number of iterations left
         --sendDataItr;

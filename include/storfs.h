@@ -127,7 +127,6 @@ typedef struct {
     storfs_crc_t crc;
 } storfs_file_header_t;
 
-
 /** @brief "Cache" for items in the current filesystem instance */ 
 typedef struct 
 {
