@@ -18,8 +18,9 @@
 
 /** @brief Wear handling enum */ 
 typedef enum {
-    WRITE_UNLOADED = 0x0UL,
-    WRITE_LOADED
+    WRITE_GOOD = 0x0UL,
+    WRITE_BAD,
+    WRITE_RELOCATE,
 } wear_level_state_t;
 
 typedef enum {
@@ -129,7 +130,7 @@ static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t r
 
 /** @brief Functions used for wear levelling */
 static storfs_err_t header_wear_level_helper(storfs_t* storfsInst, storfs_file_header_t *storfsCurrInfo, storfs_loc_t *storfsCurrLoc);
-static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, uint8_t *sendBuf, storfs_loc_t *storfsCurrLoc, uint32_t sendDataLen, uint32_t headerLen);
+static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, uint8_t *sendBuf, storfs_loc_t *storfsCurrLoc, storfs_loc_t storfsPrevLoc, uint32_t sendDataLen, uint32_t headerLen);
 
 static storfs_err_t crc_compare(storfs_t *storfsInst, storfs_file_header_t storfsInfo, const uint8_t *buf, uint32_t bufLen)
 {
@@ -812,7 +813,7 @@ static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t r
 
 static storfs_err_t header_wear_level_helper(storfs_t* storfsInst,  storfs_file_header_t *storfsCurrInfo, storfs_loc_t *storfsCurrLoc)
 {
-    wear_level_state_t state = WRITE_UNLOADED;
+    wear_level_state_t state = WRITE_GOOD;
 
     while(1)
     {
@@ -835,9 +836,9 @@ static storfs_err_t header_wear_level_helper(storfs_t* storfsInst,  storfs_file_
         //If not returned correctly move to a new location
         find_next_open_byte_helper(storfsInst, storfsCurrLoc);
 
-        if(state == WRITE_UNLOADED)
+        if(state == WRITE_GOOD)
         {
-            state = WRITE_LOADED;
+            state = WRITE_BAD;
         }
     }
 
@@ -845,30 +846,98 @@ static storfs_err_t header_wear_level_helper(storfs_t* storfsInst,  storfs_file_
     return STORFS_OK;
 }
 
-static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, uint8_t *sendBuf, storfs_loc_t *storfsCurrLoc, uint32_t sendDataLen, uint32_t headerLen)
+static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, uint8_t *sendBuf, storfs_loc_t *storfsCurrLoc, storfs_loc_t storfsPrevLoc, uint32_t sendDataLen, uint32_t headerLen)
 {
     STORFS_LOGD(TAG, "Writing File At %ld%ld, %ld", (uint32_t)(storfsCurrLoc->pageLoc >> 32),(uint32_t)(storfsCurrLoc->pageLoc), storfsCurrLoc->byteLoc);
+
+    wear_level_state_t state = WRITE_BAD;
+    uint8_t itr = 0;
+    
+    storfs_loc_t originalLoc = *storfsCurrLoc;
 
     //Write to the area in memory and then check the crc and determine if that page in memory is worn/not usable
     while(1)
     {
-        //If the programming functionality fails return an error
-        if(storfsInst->write(storfsInst, storfsCurrLoc->pageLoc, storfsCurrLoc->byteLoc, sendBuf, sendDataLen) != STORFS_OK)
+        //Retry write if failed to the page a certain amount of times based on user defined value
+        for(int i = 0; i < STORFS_WEAR_LEVEL_RETRY_NUM; i++)
         {
-            STORFS_LOGE(TAG, "Writing to memory failed in function fputs");
-            return STORFS_WRITE_FAILED;
+            if(i > 0)
+            {
+                STORFS_LOGW(TAG, "Failed to write to location, re-writting to location");
+            }
+            
+            //If the programming functionality fails return an error
+            if(storfsInst->write(storfsInst, storfsCurrLoc->pageLoc, storfsCurrLoc->byteLoc, sendBuf, sendDataLen) != STORFS_OK)
+            {
+                STORFS_LOGE(TAG, "Writing to memory failed in function fputs");
+                return STORFS_WRITE_FAILED;
+            }
+            if(storfsInst->sync(storfsInst) != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
+            if(crc_file_check(storfsInst, *storfsCurrLoc, (sendDataLen - headerLen)) == STORFS_OK)
+            {
+                if(itr == 0)
+                {
+                    state = WRITE_GOOD;
+                }
+                else
+                {
+                    state = WRITE_RELOCATE;
+                }
+                
+                break;
+            }
         }
-        if(storfsInst->sync(storfsInst) != STORFS_OK)
-        {
-            return STORFS_ERROR;
-        }
-        if(crc_file_check(storfsInst, *storfsCurrLoc, (sendDataLen - headerLen)) == STORFS_OK)
+
+        //If written successful, continue
+        if(state == WRITE_GOOD || state == WRITE_RELOCATE)
         {
             break;
         }
 
-        //If CRC returns incorrectly, update previous header fragment/child/sibling location
+        //If CRC returns incorrectly, find another location to write to
         find_next_open_byte_helper(storfsInst, storfsCurrLoc);
+
+        itr++;
+    }
+
+    //If a file was rewritten to a new location than what was expected, the previous file must be re-written with new location
+    if(state == WRITE_RELOCATE)
+    {
+        storfs_file_header_t filePrevInfo;
+        uint8_t relocateBuf[storfsInst->pageSize];
+        uint32_t prevHeaderLen = 0;
+
+        //Store the previous header, determine if it was a fragment header or a file/directory/root header
+        file_header_store_helper(storfsInst, &filePrevInfo, storfsPrevLoc, "Previous Header");
+        if((filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_FILE || 
+           (filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_ROOT || 
+           (filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
+        {
+            prevHeaderLen = STORFS_HEADER_TOTAL_SIZE;
+            if(filePrevInfo.childLocation == BYTEPAGE_TO_LOCATION(originalLoc.byteLoc, originalLoc.pageLoc, storfsInst))
+            {
+                filePrevInfo.childLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
+            }
+            else if(filePrevInfo.siblingLocation == BYTEPAGE_TO_LOCATION(originalLoc.byteLoc, originalLoc.pageLoc, storfsInst))
+            {
+                filePrevInfo.siblingLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
+            }
+        }
+        else
+        {
+            prevHeaderLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
+            filePrevInfo.fragmentLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
+        }
+
+        //Convert the header to a buffer, read the previous file, erase it and write the new information to it
+        info_to_buf(relocateBuf, &filePrevInfo);
+        storfsInst->read(storfsInst,storfsPrevLoc.pageLoc, storfsPrevLoc.byteLoc, (relocateBuf + prevHeaderLen), (storfsInst->pageSize - prevHeaderLen));
+        storfsInst->erase(storfsInst, storfsPrevLoc.pageLoc);
+        storfsInst->write(storfsInst, storfsPrevLoc.pageLoc, storfsPrevLoc.byteLoc, relocateBuf, storfsInst->pageSize);
+
     }
 
     return STORFS_OK;
@@ -1127,7 +1196,8 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     uint32_t sendDataLen;                                                     //The current length of data to be sent to the file system
 
     storfs_loc_t currDataHeaderLoc = stream->fileLoc;                         //Location of the current data
-    storfs_loc_t nextDataHeaderLoc = currDataHeaderLoc;                       //Next location for data to be written t
+    storfs_loc_t nextDataHeaderLoc = currDataHeaderLoc;                       //Next location for data to be written to
+    storfs_loc_t prevDataHeaderLoc = stream->filePrevLoc;
     
     storfs_file_size_t updatedFileSize;                                       //Updated filesize to be written to the header
     storfs_file_header_t currHeaderInfo;                                      //Current Header's information
@@ -1153,6 +1223,10 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         currDataHeaderLoc.byteLoc = 0;
         while(currHeaderInfo.fragmentLocation != 0x00)
         {
+            //Set the previous header location to the current
+            prevDataHeaderLoc = currDataHeaderLoc;
+
+            //Set the current header location to the fragment location
             currDataHeaderLoc.pageLoc = LOCATION_TO_PAGE(currHeaderInfo.fragmentLocation, storfsInst);
             file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Append");
         }
@@ -1345,12 +1419,12 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
             sendBuf[i] = headerBuf[i];
         }
 
-        if(write_wear_level_helper(storfsInst, (uint8_t*)sendBuf, &currDataHeaderLoc, sendDataLen, headerLen) != STORFS_OK)
+        if(write_wear_level_helper(storfsInst, (uint8_t*)sendBuf, &currDataHeaderLoc, prevDataHeaderLoc, sendDataLen, headerLen) != STORFS_OK)
         {
             return STORFS_ERROR;
         }
 
-        STORFS_LOGW(TAG, "Previous File Location: %ld, %ld, %ld", (uint32_t)(stream->filePrevLoc.pageLoc >> 32), (uint32_t)(stream->filePrevLoc.pageLoc), stream->filePrevLoc.byteLoc);
+        STORFS_LOGW(TAG, "Previous File Location: %ld, %ld, %ld", (uint32_t)(prevDataHeaderLoc.pageLoc >> 32), (uint32_t)(prevDataHeaderLoc.pageLoc), prevDataHeaderLoc.byteLoc);
 
         //Decrement the number of iterations left
         --sendDataItr;
@@ -1358,7 +1432,8 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         //Increment the buffer's location to send data
         str += (sendDataLen - headerLen - appendHeaderByteLoc) * sizeof(uint8_t);
 
-        //Set current header location equal to the next
+        //Set current header location equal to the next, and previous to current
+        prevDataHeaderLoc = currDataHeaderLoc;
         currDataHeaderLoc = nextDataHeaderLoc;
 
         //Increment current iteration number

@@ -200,6 +200,8 @@ Further details below
 #define STORFS_LOG_DISPLAY_HEADER		//Define to utilize the display headder logging functionality
 
 #define STORFS_USE_CRC					//Define to use a custom user CRC check for wear-levelling
+
+#define STORFS_WEAR_LEVEL_RETRY_NUM   //Defines the number of retries that a write operation will try to write to a page before enabling wear-levelling functionality
 ```
 
 
