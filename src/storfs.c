@@ -768,11 +768,14 @@ static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t r
 {
     STORFS_LOGI(TAG, "Deleting directory and all of it's containing files");
 
+    //Remove the directory
     if(file_delete_helper(storfsInst, rmParentLoc, rmParentHeader) != STORFS_OK)
     {
         return STORFS_ERROR;
     }
-     if(rmParentHeader.childLocation != 0x00)
+
+    //If the parent header has a child location, ensure the children get deleted
+    if(rmParentHeader.childLocation != 0x00)
         {
             storfs_file_header_t rmChildHeader;
             storfs_loc_t rmChildFileLoc;
@@ -782,6 +785,7 @@ static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t r
             file_header_store_helper(storfsInst, &rmChildHeader, rmChildFileLoc, "Remove");
             while(1)
             {
+                //If a directory needs to be deleted, iterate through this
                 if(rmChildHeader.childLocation != 0x00)
                 {
                     if(directory_delete_helper(storfsInst, rmChildFileLoc, rmChildHeader) != STORFS_OK)
@@ -800,6 +804,8 @@ static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t r
                     rmChildFileLoc.pageLoc = LOCATION_TO_PAGE(rmChildHeader.siblingLocation, storfsInst);
                     rmChildFileLoc.byteLoc = LOCATION_TO_BYTE(rmChildHeader.siblingLocation, storfsInst);
                 }
+
+                //If no siblings, this will be the last file within the directory
                 if(rmChildHeader.siblingLocation == 0x00)
                 {
                     break;
@@ -842,6 +848,124 @@ static storfs_err_t header_wear_level_helper(storfs_t* storfsInst,  storfs_file_
         }
     }
 
+
+    return STORFS_OK;
+}
+
+static storfs_err_t find_prev_file_loc(storfs_t* storfsInst,  storfs_loc_t storfsCurrLoc, storfs_loc_t storfsItrLoc, storfs_loc_t* storfsPrevLoc)
+{
+    uint8_t prevFileBuf[STORFS_HEADER_TOTAL_SIZE];
+    storfs_file_header_t prevFileHeader;
+    
+    //Store the iterator header and determine if the child or sibling location is equal to the the current location
+    if(file_header_store_helper(storfsInst, &prevFileHeader, storfsItrLoc, "Prev File") != STORFS_OK)
+    {
+        return STORFS_ERROR;
+    }
+    if( prevFileHeader.childLocation == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst) ||
+        prevFileHeader.siblingLocation == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst))
+    {
+        *storfsPrevLoc = storfsItrLoc;
+        return STORFS_OK;
+    }
+    
+    storfs_loc_t storfsNextChildLoc;
+    storfs_loc_t storfsNextSibLoc;
+
+    if(prevFileHeader.childLocation != 0x00)
+    {
+        storfsNextChildLoc.byteLoc = LOCATION_TO_BYTE(prevFileHeader.childLocation, storfsInst);
+        storfsNextChildLoc.pageLoc = LOCATION_TO_PAGE(prevFileHeader.childLocation, storfsInst);
+        if(find_prev_file_loc(storfsInst, storfsCurrLoc, storfsNextChildLoc, storfsPrevLoc) != STORFS_OK)
+        {
+            return STORFS_ERROR;
+        }
+        if(BYTEPAGE_TO_LOCATION(storfsPrevLoc->byteLoc, storfsPrevLoc->pageLoc, storfsInst) == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst))
+        {
+            return STORFS_OK;
+        }
+    }
+    if(prevFileHeader.siblingLocation != 0x00)
+    {
+        while(prevFileHeader.siblingLocation != 0x00)
+        {
+            storfsNextSibLoc.byteLoc = LOCATION_TO_BYTE(prevFileHeader.siblingLocation, storfsInst);
+            storfsNextSibLoc.pageLoc = LOCATION_TO_PAGE(prevFileHeader.siblingLocation, storfsInst);
+            if(file_header_store_helper(storfsInst, &prevFileHeader, storfsNextSibLoc, "Previous File") != STORFS_OK)
+            {
+                return STORFS_ERROR;
+            }
+
+            if( prevFileHeader.childLocation == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst) ||
+                prevFileHeader.siblingLocation == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst))
+            {
+                *storfsPrevLoc = storfsNextSibLoc;
+                return STORFS_OK;
+            }
+
+            if(prevFileHeader.childLocation != 0x00)
+            {
+                storfsNextChildLoc.byteLoc = LOCATION_TO_BYTE(prevFileHeader.childLocation, storfsInst);
+                storfsNextChildLoc.pageLoc = LOCATION_TO_PAGE(prevFileHeader.childLocation, storfsInst);
+                if(find_prev_file_loc(storfsInst, storfsCurrLoc, storfsNextChildLoc, storfsPrevLoc) != STORFS_OK)
+                {
+                    return STORFS_ERROR;
+                }
+                if(BYTEPAGE_TO_LOCATION(storfsPrevLoc->byteLoc, storfsPrevLoc->pageLoc, storfsInst) == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst))
+                {
+                    return STORFS_OK;
+                }
+            }
+        }
+    }
+
+    return STORFS_OK;
+}
+
+storfs_err_t wear_level_activate(storfs_t* storfsInst, uint8_t *sendBuf, storfs_loc_t *storfsCurrLoc, storfs_loc_t storfsPrevLoc, uint32_t sendDataLen, uint32_t headerLen)
+{
+    storfs_loc_t originalLoc = *storfsCurrLoc;
+
+    storfs_file_header_t filePrevInfo;
+    storfs_loc_t prevPrevFileLoc;
+    uint8_t relocateBuf[storfsInst->pageSize];
+    uint32_t prevHeaderLen = 0;
+
+    //Store the previous header, determine if it was a fragment header or a file/directory/root header
+    file_header_store_helper(storfsInst, &filePrevInfo, storfsPrevLoc, "Previous Header");
+
+    find_prev_file_loc(storfsInst, storfsPrevLoc, storfsInst->cachedInfo.rootLocation[0], &prevPrevFileLoc);
+    STORFS_LOGI(TAG, "Previous file's, previous file location %ld%ld", (uint32_t)(BYTEPAGE_TO_LOCATION(prevPrevFileLoc.byteLoc, prevPrevFileLoc.pageLoc, storfsInst) >> 32), (uint32_t)(BYTEPAGE_TO_LOCATION(prevPrevFileLoc.byteLoc, prevPrevFileLoc.pageLoc, storfsInst)));
+
+    file_info_display_helper(filePrevInfo);
+    if((filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_FILE || 
+        (filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_ROOT || 
+        (filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
+    {
+        prevHeaderLen = STORFS_HEADER_TOTAL_SIZE;
+        if(filePrevInfo.childLocation == BYTEPAGE_TO_LOCATION(originalLoc.byteLoc, originalLoc.pageLoc, storfsInst))
+        {
+            STORFS_LOGI(TAG, "Updating previous file child location");
+            filePrevInfo.childLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
+        }
+        else if(filePrevInfo.siblingLocation == BYTEPAGE_TO_LOCATION(originalLoc.byteLoc, originalLoc.pageLoc, storfsInst))
+        {
+            STORFS_LOGI(TAG, "Updating previous file sibling location");
+            filePrevInfo.siblingLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
+        }
+    }
+    else
+    {
+        STORFS_LOGI(TAG, "Updating previous fragment header");
+        prevHeaderLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
+        filePrevInfo.fragmentLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
+    }
+
+    //Convert the header to a buffer, read the previous file, erase it and write the new information to it
+    info_to_buf(relocateBuf, &filePrevInfo);
+    storfsInst->read(storfsInst,storfsPrevLoc.pageLoc, storfsPrevLoc.byteLoc, (relocateBuf + prevHeaderLen), (storfsInst->pageSize - prevHeaderLen));
+    //storfsInst->erase(storfsInst, storfsPrevLoc.pageLoc);
+    //storfsInst->write(storfsInst, storfsPrevLoc.pageLoc, storfsPrevLoc.byteLoc, relocateBuf, storfsInst->pageSize);
 
     return STORFS_OK;
 }
@@ -906,38 +1030,7 @@ static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, uint8_t *sendB
     //If a file was rewritten to a new location than what was expected, the previous file must be re-written with new location
     if(state == WRITE_RELOCATE)
     {
-        storfs_file_header_t filePrevInfo;
-        uint8_t relocateBuf[storfsInst->pageSize];
-        uint32_t prevHeaderLen = 0;
-
-        //Store the previous header, determine if it was a fragment header or a file/directory/root header
-        file_header_store_helper(storfsInst, &filePrevInfo, storfsPrevLoc, "Previous Header");
-        if((filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_FILE || 
-           (filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_ROOT || 
-           (filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
-        {
-            prevHeaderLen = STORFS_HEADER_TOTAL_SIZE;
-            if(filePrevInfo.childLocation == BYTEPAGE_TO_LOCATION(originalLoc.byteLoc, originalLoc.pageLoc, storfsInst))
-            {
-                filePrevInfo.childLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
-            }
-            else if(filePrevInfo.siblingLocation == BYTEPAGE_TO_LOCATION(originalLoc.byteLoc, originalLoc.pageLoc, storfsInst))
-            {
-                filePrevInfo.siblingLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
-            }
-        }
-        else
-        {
-            prevHeaderLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
-            filePrevInfo.fragmentLocation = BYTEPAGE_TO_LOCATION(storfsCurrLoc->byteLoc, storfsCurrLoc->pageLoc, storfsInst);
-        }
-
-        //Convert the header to a buffer, read the previous file, erase it and write the new information to it
-        info_to_buf(relocateBuf, &filePrevInfo);
-        storfsInst->read(storfsInst,storfsPrevLoc.pageLoc, storfsPrevLoc.byteLoc, (relocateBuf + prevHeaderLen), (storfsInst->pageSize - prevHeaderLen));
-        storfsInst->erase(storfsInst, storfsPrevLoc.pageLoc);
-        storfsInst->write(storfsInst, storfsPrevLoc.pageLoc, storfsPrevLoc.byteLoc, relocateBuf, storfsInst->pageSize);
-
+        
     }
 
     return STORFS_OK;
