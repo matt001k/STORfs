@@ -343,6 +343,6 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
 
 storfs_err_t storfs_display_header(storfs_t *storfsInst, storfs_loc_t loc);
 
- storfs_err_t wear_level_activate(storfs_t* storfsInst, uint8_t *sendBuf, storfs_loc_t *storfsCurrLoc, storfs_loc_t storfsPrevLoc, uint32_t sendDataLen, uint32_t headerLen);
+ storfs_err_t wear_level_activate(storfs_t* storfsInst, storfs_file_header_t storfsInfo, storfs_loc_t *storfsCurrLoc, storfs_loc_t storfsPrevLoc, uint32_t sendDataLen);
 
 #endif
