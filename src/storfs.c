@@ -855,8 +855,9 @@ static storfs_err_t header_wear_level_helper(storfs_t* storfsInst,  storfs_file_
 
 static storfs_err_t find_prev_file_loc(storfs_t* storfsInst,  storfs_loc_t storfsCurrLoc, storfs_loc_t storfsItrLoc, storfs_loc_t* storfsPrevLoc)
 {
-    uint8_t prevFileBuf[STORFS_HEADER_TOTAL_SIZE];
     storfs_file_header_t prevFileHeader;
+    storfs_loc_t storfsNextChildLoc;
+    storfs_loc_t storfsNextSibLoc;
     
     //Store the iterator header and determine if the child or sibling location is equal to the the current location
     if(file_header_store_helper(storfsInst, &prevFileHeader, storfsItrLoc, "Previous File") != STORFS_OK)
@@ -869,25 +870,30 @@ static storfs_err_t find_prev_file_loc(storfs_t* storfsInst,  storfs_loc_t storf
         *storfsPrevLoc = storfsItrLoc;
         return STORFS_OK;
     }
-    
-    storfs_loc_t storfsNextChildLoc;
-    storfs_loc_t storfsNextSibLoc;
 
+    //Determine whether the previous file has a child
     if(prevFileHeader.childLocation != 0x00)
     {
         storfsNextChildLoc.byteLoc = LOCATION_TO_BYTE(prevFileHeader.childLocation, storfsInst);
         storfsNextChildLoc.pageLoc = LOCATION_TO_PAGE(prevFileHeader.childLocation, storfsInst);
+
+        //If the previous file has a child re-iterate through find_prev_file_loc
         if(find_prev_file_loc(storfsInst, storfsCurrLoc, storfsNextChildLoc, storfsPrevLoc) != STORFS_OK)
         {
             return STORFS_ERROR;
         }
+
+        //If the previously found location is the same as the 
         if(BYTEPAGE_TO_LOCATION(storfsPrevLoc->byteLoc, storfsPrevLoc->pageLoc, storfsInst) == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst))
         {
             return STORFS_OK;
         }
     }
+
+    //Determine whether the previous file has a sibling
     if(prevFileHeader.siblingLocation != 0x00)
     {
+        //If the current header has a sibling location, continuously iterate through the siblings until the wanted location is found or not
         while(prevFileHeader.siblingLocation != 0x00)
         {
             storfsNextSibLoc.byteLoc = LOCATION_TO_BYTE(prevFileHeader.siblingLocation, storfsInst);
@@ -897,6 +903,7 @@ static storfs_err_t find_prev_file_loc(storfs_t* storfsInst,  storfs_loc_t storf
                 return STORFS_ERROR;
             }
 
+            //If either the child location of the sibling location is equivalent to the wanted location, place that
             if( prevFileHeader.childLocation == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst) ||
                 prevFileHeader.siblingLocation == BYTEPAGE_TO_LOCATION(storfsCurrLoc.byteLoc, storfsCurrLoc.pageLoc, storfsInst))
             {
@@ -904,6 +911,7 @@ static storfs_err_t find_prev_file_loc(storfs_t* storfsInst,  storfs_loc_t storf
                 return STORFS_OK;
             }
 
+            //If there is a child location, iterate through it with the prev_file_loc function
             if(prevFileHeader.childLocation != 0x00)
             {
                 storfsNextChildLoc.byteLoc = LOCATION_TO_BYTE(prevFileHeader.childLocation, storfsInst);
@@ -923,98 +931,113 @@ static storfs_err_t find_prev_file_loc(storfs_t* storfsInst,  storfs_loc_t storf
     return STORFS_OK;
 }
 
-storfs_err_t wear_level_activate(storfs_t* storfsInst, wear_level_t *wearLevelInfo)
+storfs_err_t wear_level_act(storfs_t* storfsInst, wear_level_t *wearLevelInfo)
 {
-    storfs_file_header_t filePrevInfo;
-    storfs_loc_t prevPrevFileLoc;
     uint8_t relocateBuf[storfsInst->pageSize];
-    uint32_t prevHeaderLen = 0;
-    uint32_t prevFileSize = 0;
-
     wear_level_t prevWearLevelInfo;
 
     //Store the previous header, determine if it was a fragment header or a file/directory/root header
-    file_header_store_helper(storfsInst, &filePrevInfo, wearLevelInfo->storfsPrevLoc, "Previous Header");
+    file_header_store_helper(storfsInst, &prevWearLevelInfo.storfsInfo, wearLevelInfo->storfsPrevLoc, "Previous Header");
 
-    file_info_display_helper(filePrevInfo);
-    if((filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_FILE || 
-        (filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_ROOT || 
-        (filePrevInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
+    file_info_display_helper(prevWearLevelInfo.storfsInfo);
+
+    //If the previous file information is a file, the root or a directory... else if it is a fragment
+    if((prevWearLevelInfo.storfsInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_FILE || 
+        (prevWearLevelInfo.storfsInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_ROOT || 
+        (prevWearLevelInfo.storfsInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY)
     {
         //Determine the parent/sibling location of the previous file in order to prepare it for another iteration of wear-level writing
-        if(find_prev_file_loc(storfsInst, wearLevelInfo->storfsPrevLoc, storfsInst->cachedInfo.rootLocation[0], &prevPrevFileLoc) != STORFS_OK)
+        if(find_prev_file_loc(storfsInst, wearLevelInfo->storfsPrevLoc, storfsInst->cachedInfo.rootLocation[0], &prevWearLevelInfo.storfsPrevLoc) != STORFS_OK)
         {
             LOGE(TAG, "Error determining the previous file's parent/sibling location");
             return STORFS_ERROR;
         }
+
+        //The header info location will be the same as the previous location
+        prevWearLevelInfo.storfsInfoLoc = prevWearLevelInfo.storfsPrevLoc;
         
         //Set the previous header length
-        prevHeaderLen = STORFS_HEADER_TOTAL_SIZE;
+        prevWearLevelInfo.headerLen = STORFS_HEADER_TOTAL_SIZE;
 
         //Set the page size that must be re-written
-        if(filePrevInfo.fileSize > storfsInst->pageSize)
+        if(prevWearLevelInfo.storfsInfo.fileSize > storfsInst->pageSize)
         {
-            prevFileSize = storfsInst->pageSize;
+            prevWearLevelInfo.sendDataLen  = storfsInst->pageSize;
         }
         else
         {
-            prevFileSize = filePrevInfo.fileSize;
+            prevWearLevelInfo.sendDataLen  = prevWearLevelInfo.storfsInfo.fileSize;
         }
         
         //Determine if the child location or sibling location must be re-written
-        if(filePrevInfo.childLocation == BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsCurrLoc->byteLoc, wearLevelInfo->storfsCurrLoc->pageLoc, storfsInst))
+        if(prevWearLevelInfo.storfsInfo.childLocation == BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsOrigLoc.byteLoc, wearLevelInfo->storfsOrigLoc.pageLoc, storfsInst))
         {
             STORFS_LOGI(TAG, "Updating previous file child location");
-            filePrevInfo.childLocation = BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsCurrLoc->byteLoc, wearLevelInfo->storfsCurrLoc->pageLoc, storfsInst);
+            prevWearLevelInfo.storfsInfo.childLocation = BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsCurrLoc->byteLoc, wearLevelInfo->storfsCurrLoc->pageLoc, storfsInst);
         }
-        else if(filePrevInfo.siblingLocation == BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsCurrLoc->byteLoc, wearLevelInfo->storfsCurrLoc->pageLoc, storfsInst))
+        else if(prevWearLevelInfo.storfsInfo.siblingLocation == BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsOrigLoc.byteLoc, wearLevelInfo->storfsOrigLoc.pageLoc, storfsInst))
         {
             STORFS_LOGI(TAG, "Updating previous file sibling location");
-            filePrevInfo.siblingLocation = BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsCurrLoc->byteLoc, wearLevelInfo->storfsCurrLoc->pageLoc, storfsInst);
+            prevWearLevelInfo.storfsInfo.siblingLocation = BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsCurrLoc->byteLoc, wearLevelInfo->storfsCurrLoc->pageLoc, storfsInst);
         }
     }
     else
     {
-        if(wearLevelInfo->storfsInfo.fragmentLocation == BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsPrevLoc.byteLoc, wearLevelInfo->storfsPrevLoc.pageLoc, storfsInst))
+        storfs_file_header_t tempHeader = wearLevelInfo->storfsInfo;
+
+        //If the current head file header's fragment location is equal to the previous files fragment location
+        if(tempHeader.fragmentLocation == BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsPrevLoc.byteLoc, wearLevelInfo->storfsPrevLoc.pageLoc, storfsInst))
         {
-            prevPrevFileLoc.pageLoc = LOCATION_TO_PAGE(wearLevelInfo->storfsInfo.fragmentLocation, storfsInst);
-            prevPrevFileLoc.byteLoc = LOCATION_TO_BYTE(wearLevelInfo->storfsInfo.fragmentLocation, storfsInst);
+            //The previous location will be equivalent to the main header's location
+            prevWearLevelInfo.storfsPrevLoc = wearLevelInfo->storfsInfoLoc;
         }
         else
         {
-            while(wearLevelInfo->storfsInfo.fragmentLocation != BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsPrevLoc.byteLoc, wearLevelInfo->storfsPrevLoc.pageLoc, storfsInst))
+            //Iterate through fragment header locations until the previous fragment header is found
+            while(tempHeader.fragmentLocation != BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsPrevLoc.byteLoc, wearLevelInfo->storfsPrevLoc.pageLoc, storfsInst))
             {
-                prevPrevFileLoc.pageLoc = LOCATION_TO_PAGE(wearLevelInfo->storfsInfo.fragmentLocation, storfsInst);
-                prevPrevFileLoc.byteLoc = LOCATION_TO_BYTE(wearLevelInfo->storfsInfo.fragmentLocation, storfsInst);
-                file_header_store_helper(storfsInst, &wearLevelInfo->storfsInfo, prevPrevFileLoc, "Previous Fragment");
+                prevWearLevelInfo.storfsPrevLoc.pageLoc = LOCATION_TO_PAGE(tempHeader.fragmentLocation, storfsInst);
+                prevWearLevelInfo.storfsPrevLoc.byteLoc = LOCATION_TO_BYTE(tempHeader.fragmentLocation, storfsInst);
+
+                //Update the prevWearLevel header information while iterating
+                file_header_store_helper(storfsInst, &tempHeader, prevWearLevelInfo.storfsPrevLoc, "Previous Fragment");
             }
         }
 
-        STORFS_LOGI(TAG, "Updating previous fragment header");
-        
-        prevHeaderLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
+        STORFS_LOGI(TAG, "Updating previous file fragment location");
 
-        //TODO add previous filesize
+        //Set the previous header length to be a fragment header length
+        prevWearLevelInfo.headerLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
+
+        //Set the previous header's info location to the original
+        prevWearLevelInfo.storfsInfoLoc = wearLevelInfo->storfsInfoLoc;
+
+        //Set the page size that must be re-written, must be a full page if there is a fragment
+        prevWearLevelInfo.sendDataLen  = storfsInst->pageSize;
 
         //Update the fragment location
-        filePrevInfo.fragmentLocation = BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsCurrLoc->byteLoc, wearLevelInfo->storfsCurrLoc->pageLoc, storfsInst);
+        prevWearLevelInfo.storfsInfo.fragmentLocation = BYTEPAGE_TO_LOCATION(wearLevelInfo->storfsCurrLoc->byteLoc, wearLevelInfo->storfsCurrLoc->pageLoc, storfsInst);
     }
 
-    STORFS_LOGI(TAG, "Previous file's, previous file location %ld%ld", (uint32_t)(BYTEPAGE_TO_LOCATION(prevPrevFileLoc.byteLoc, prevPrevFileLoc.pageLoc, storfsInst) >> 32), (uint32_t)(BYTEPAGE_TO_LOCATION(prevPrevFileLoc.byteLoc, prevPrevFileLoc.pageLoc, storfsInst)));
+    STORFS_LOGI(TAG, "Previous file's, previous file location %ld%ld", (uint32_t)(BYTEPAGE_TO_LOCATION(prevWearLevelInfo.storfsPrevLoc.byteLoc, prevWearLevelInfo.storfsPrevLoc.pageLoc, storfsInst) >> 32), (uint32_t)(BYTEPAGE_TO_LOCATION(prevWearLevelInfo.storfsPrevLoc.byteLoc, prevWearLevelInfo.storfsPrevLoc.pageLoc, storfsInst)));
     
     //Convert the header to a buffer, read the previous file, erase it and write the new information to it
-    info_to_buf(relocateBuf, &filePrevInfo);
-    storfsInst->read(storfsInst,wearLevelInfo->storfsPrevLoc.pageLoc, prevHeaderLen, (relocateBuf + prevHeaderLen), (storfsInst->pageSize - prevHeaderLen));
+    info_to_buf(relocateBuf, &prevWearLevelInfo.storfsInfo);
+    if(storfsInst->read(storfsInst,wearLevelInfo->storfsPrevLoc.pageLoc, prevWearLevelInfo.headerLen, (relocateBuf + prevWearLevelInfo.headerLen), (storfsInst->pageSize - prevWearLevelInfo.headerLen)) != STORFS_OK)
+    {
+        return STORFS_READ_FAILED;
+    }
+    if(storfsInst->erase(storfsInst, wearLevelInfo->storfsPrevLoc.pageLoc) != STORFS_OK)
+    {
+        return STORFS_ERROR;
+    }
     
-    storfsInst->erase(storfsInst, wearLevelInfo->storfsPrevLoc.pageLoc);
-    
-    prevWearLevelInfo.headerLen = prevHeaderLen;
+    //Write to the previous wear struct the previous files information
     prevWearLevelInfo.sendBuf = relocateBuf;
-    prevWearLevelInfo.sendDataLen = prevFileSize;
-    prevWearLevelInfo.storfsInfo = filePrevInfo;
     prevWearLevelInfo.storfsCurrLoc = &wearLevelInfo->storfsPrevLoc;
-    prevWearLevelInfo.storfsPrevLoc = prevPrevFileLoc;
+    prevWearLevelInfo.storfsOrigLoc = wearLevelInfo->storfsPrevLoc;
 
+    //Write the previous file and header
     write_wear_level_helper(storfsInst, &prevWearLevelInfo);
 
     return STORFS_OK;
@@ -1026,8 +1049,6 @@ static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, wear_level_t *
 
     wear_level_state_t state = WRITE_BAD;
     uint8_t itr = 0;
-    
-    storfs_loc_t originalLoc = *wearLevelInfo->storfsCurrLoc;
 
     //Write to the area in memory and then check the crc and determine if that page in memory is worn/not usable
     while(1)
@@ -1060,7 +1081,6 @@ static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, wear_level_t *
                 {
                     state = WRITE_RELOCATE;
                 }
-                
                 break;
             }
         }
@@ -1080,7 +1100,7 @@ static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, wear_level_t *
     //If a file was rewritten to a new location than what was expected, the previous file must be re-written with new location
     if(state == WRITE_RELOCATE)
     {
-        
+        wear_level_act(storfsInst, wearLevelInfo);
     }
 
     return STORFS_OK;
@@ -1573,14 +1593,14 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         wearLevelInfo.sendBuf = sendBuf;
         wearLevelInfo.sendDataLen = sendDataLen;
         wearLevelInfo.storfsCurrLoc = &currDataHeaderLoc;
+        wearLevelInfo.storfsOrigLoc = currDataHeaderLoc;
         wearLevelInfo.storfsPrevLoc = prevDataHeaderLoc;
         wearLevelInfo.storfsInfo = currHeaderInfo;
+        wearLevelInfo.storfsInfoLoc = stream->fileLoc;
         if(write_wear_level_helper(storfsInst, &wearLevelInfo) != STORFS_OK)
         {
             return STORFS_ERROR;
         }
-
-        STORFS_LOGW(TAG, "Previous File Location: %ld, %ld, %ld", (uint32_t)(prevDataHeaderLoc.pageLoc >> 32), (uint32_t)(prevDataHeaderLoc.pageLoc), prevDataHeaderLoc.byteLoc);
 
         //Decrement the number of iterations left
         --sendDataItr;
