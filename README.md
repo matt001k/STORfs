@@ -1,7 +1,7 @@
 <div align="center"><h1>
     STORfs Open Source File System</h1> <br>
     <h3>
-        Release Version 1.0.2 <br><br>
+        Release Version 1.0.3 <br><br>
     	Created by: KrauseGLOBAL Solutions, LLC <br><br>
     </h3></div>
 
@@ -18,7 +18,7 @@ STORfs supports:
 - Virtually unlimited storage space
 - Easy user interface with functions
 - Small footprint
-  - Compiling as low as 5764 Bytes (*compiled with gcc arm7*)
+  - Compiling as low as 11917 Bytes (*compiled with gcc arm7*)
 
 
 ## Porting STORfs
@@ -334,7 +334,7 @@ When writing to a file/fragment STORfs will determine whether or not that page/b
 
 | Compiler | Size (in bytes) |
 | :------: | :-------------: |
-| GCC ARM7 |      5764       |
+| GCC ARM7 |      11917      |
 | Others to Come Soon... | |
 
 
