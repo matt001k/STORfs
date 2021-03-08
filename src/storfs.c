@@ -67,6 +67,7 @@ typedef enum {
 #define STORFS_FILE_SIBLING_FLAG                0x10
 #define STORFS_FILE_INIT_HEADER_WRITE           0x20
 #define STORFS_FILE_HEADER_WRITE                0x40
+#define STORFS_FILE_WRITE_INIT_FLAG             0x80
 #define STORFS_FILE_DELETED_FLAG                0xF1
 
 #ifdef STORFS_USE_CRC
@@ -165,7 +166,7 @@ static storfs_err_t crc_header_check(storfs_t *storfsInst, storfs_loc_t storfsLo
     storfs_file_header_t storfsInfo;
     uint32_t strLen = 0;
 
-    file_header_store_helper(storfsInst, &storfsInfo, storfsLoc, "CRC Check");
+    file_header_store_helper(storfsInst, &storfsInfo, storfsLoc, "CRC Header Check");
 
     while(storfsInfo.fileName[strLen++] != '\0');
 
@@ -178,7 +179,7 @@ static storfs_err_t crc_file_check(storfs_t *storfsInst, storfs_loc_t storfsLoc,
     uint32_t headerLen = STORFS_HEADER_TOTAL_SIZE;
     uint8_t buf[len];
 
-    file_header_store_helper(storfsInst, &storfsInfo, storfsLoc, "CRC Check");
+    file_header_store_helper(storfsInst, &storfsInfo, storfsLoc, "CRC File Check");
     if((storfsInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == 0)
     {
         headerLen = STORFS_FRAGMENT_HEADER_TOTAL_SIZE;
@@ -951,8 +952,8 @@ storfs_err_t wear_level_act(storfs_t* storfsInst, wear_level_t *wearLevelInfo)
 
     //Determine if the previous file is a directory or the root and ensure that the correct flag is applied to the next iteration
     if((prevWearLevelInfo.storfsInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_DIRECTORY || 
-    (prevWearLevelInfo.storfsInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_ROOT ||
-    prevWearLevelInfo.sendDataLen == STORFS_HEADER_TOTAL_SIZE)
+    (prevWearLevelInfo.storfsInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_ROOT || 
+    (((prevWearLevelInfo.storfsInfo.fileInfo & STORFS_INFO_REG_FILE_TYPE_FILE) == STORFS_INFO_REG_FILE_TYPE_FILE) && (prevWearLevelInfo.sendDataLen == STORFS_HEADER_TOTAL_SIZE)))
     {
         prevWearLevelInfo.storfsFlags = STORFS_FILE_HEADER_WRITE;
     }
@@ -988,14 +989,14 @@ storfs_err_t wear_level_act(storfs_t* storfsInst, wear_level_t *wearLevelInfo)
 
 static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, wear_level_t *wearLevelInfo)
 {
-    STORFS_LOGD(TAG, "Writing File At %ld%ld, %ld", (uint32_t)(wearLevelInfo->storfsCurrLoc->pageLoc >> 32),(uint32_t)(wearLevelInfo->storfsCurrLoc->pageLoc), wearLevelInfo->storfsCurrLoc->byteLoc);
-
     wear_level_state_t state = WRITE_BAD;
     uint8_t itr = 0;
 
     //Write to the area in memory and then check the crc and determine if that page in memory is worn/not usable
     while(1)
     {
+        STORFS_LOGD(TAG, "Writing File At %ld%ld, %ld", (uint32_t)(wearLevelInfo->storfsCurrLoc->pageLoc >> 32),(uint32_t)(wearLevelInfo->storfsCurrLoc->pageLoc), wearLevelInfo->storfsCurrLoc->byteLoc);
+
         //Retry write if failed to the page a certain amount of times based on user defined value
         for(int i = 0; i < STORFS_WEAR_LEVEL_RETRY_NUM; i++)
         {
@@ -1045,7 +1046,12 @@ static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, wear_level_t *
                     }
                     break;
                 }
-            }            
+            } 
+            if(storfsInst->erase(storfsInst, wearLevelInfo->storfsCurrLoc->pageLoc) != STORFS_OK)
+            {
+                LOGE(TAG, "Could not erase page in wear-level function");
+                return STORFS_ERROR;
+            }           
         }
 
         //If written successful, continue
@@ -1056,6 +1062,20 @@ static storfs_err_t write_wear_level_helper(storfs_t* storfsInst, wear_level_t *
 
         //If CRC returns incorrectly, find another location to write to
         find_next_open_byte_helper(storfsInst, wearLevelInfo->storfsCurrLoc);
+
+        //If this is a file being written to, it is the first write and the send data length is greater than a page size, the fragment location must be updated as well
+        if(wearLevelInfo->storfsFlags & STORFS_FILE_WRITE_FLAG && 
+            wearLevelInfo->storfsFlags & STORFS_FILE_WRITE_INIT_FLAG &&
+            wearLevelInfo->sendDataLen >= storfsInst->pageSize)
+        {
+            storfs_loc_t nextFragmentLoc = *wearLevelInfo->storfsCurrLoc;
+            storfs_file_header_t currInfo;
+            
+            find_next_open_byte_helper(storfsInst, &nextFragmentLoc);
+            buf_to_info(wearLevelInfo->sendBuf, &currInfo);
+            currInfo.fragmentLocation = BYTEPAGE_TO_LOCATION(nextFragmentLoc.byteLoc, nextFragmentLoc.pageLoc, storfsInst);
+            info_to_buf(wearLevelInfo->sendBuf, &currInfo);
+        }
 
         itr++;
     }
@@ -1563,7 +1583,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         wearLevelInfo.storfsPrevLoc = prevDataHeaderLoc;
         wearLevelInfo.storfsInfo = stream->fileInfo;
         wearLevelInfo.storfsInfoLoc = stream->fileLoc;
-        wearLevelInfo.storfsFlags = STORFS_FILE_WRITE_FLAG;
+        wearLevelInfo.storfsFlags = STORFS_FILE_WRITE_FLAG | STORFS_FILE_WRITE_INIT_FLAG;
         if(write_wear_level_helper(storfsInst, &wearLevelInfo) != STORFS_OK)
         {
             return STORFS_ERROR;
@@ -1576,8 +1596,23 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         str += (sendDataLen - headerLen - appendHeaderByteLoc) * sizeof(uint8_t);
 
         //Set current header location equal to the next, and previous to current
+        if(wearLevelInfo.storfsCurrLoc->pageLoc >= nextDataHeaderLoc.pageLoc)
+        {
+            //Update nextOpenByte to what is available
+            find_next_open_byte_helper(storfsInst, &currDataHeaderLoc);
+            storfsInst->cachedInfo.nextOpenByte = BYTEPAGE_TO_LOCATION(currDataHeaderLoc.byteLoc, currDataHeaderLoc.pageLoc, storfsInst);
+
+            //If the current header location is equivalent to the stream's original file location and there was an error writing, update the stream's file location
+            if(currDataHeaderLoc.pageLoc == stream->fileLoc.pageLoc)
+            {
+                stream->fileLoc = *wearLevelInfo.storfsCurrLoc;
+            }
+        }
+        else
+        {
+            currDataHeaderLoc = nextDataHeaderLoc;
+        }
         prevDataHeaderLoc = *wearLevelInfo.storfsCurrLoc;
-        currDataHeaderLoc = nextDataHeaderLoc;
 
         //Increment current iteration number
         currItr++;
