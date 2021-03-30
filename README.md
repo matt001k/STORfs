@@ -1,7 +1,7 @@
 <div align="center"><h1>
     STORfs Open Source File System</h1> <br>
     <h3>
-        Release Version 1.0.3 <br><br>
+        Release Version 1.1.0 <br><br>
     	Created by: KrauseGLOBAL Solutions, LLC <br><br>
     </h3></div>
 
@@ -16,6 +16,7 @@ STORfs supports:
 - Directories and Files
 - File size of 4GB
 - Virtually unlimited storage space
+- Static memory allocation only systems
 - Easy user interface with functions
 - Small footprint
   - Compiling as low as 11917 Bytes (*compiled with gcc arm7*)
@@ -263,12 +264,18 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *stream);
 ```
 - Used to read from a file stream for a certain amount of characters
+- Readable in chunks through an updated pointer
 ``` c
 storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream);
 ```
 - Removes a file/directory according to the path declared
 - If  a file is associated with a stream, the stream may be used called to terminate its values
 - If a directory is removed, all of its contents within(children) will be removed as well
+
+``` c
+storfs_err_t storfs_rewind(storfs_t *storfsInst, STORFS_FILE *stream);
+```
+- Sets the stream's read and write pointer back to the beginning of the file
 
 ## STORfs Explained
 

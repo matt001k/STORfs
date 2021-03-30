@@ -352,7 +352,7 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
      * @brief       rewind
      *              Sets the pointer of reading/writing a file back to the beginning
      * 
-     * @attention   To remove a directory and all of its contents stream must be NULL
+     * @attention   After rewinding the file back to it's origin, appending will truncate the file
      *              
      * @param       storfsInst  Instance used for the STORfs
      * @param       stream      File to rewind

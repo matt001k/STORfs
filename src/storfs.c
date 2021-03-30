@@ -1346,14 +1346,13 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
     STORFS_LOGI(TAG, "Writing to file %s", stream->fileInfo.fileName);
 
+    wear_level_t wearLevelInfo;                                               //Needed for wear level writing
     uint8_t sendBuf[storfsInst->pageSize];                                    //Buffer of data to send to flash device                                      
     uint8_t headerBuf[STORFS_HEADER_TOTAL_SIZE];                              //Buffer used to store the header of each page
     uint32_t headerLen = STORFS_HEADER_TOTAL_SIZE;                            //Length of header to be used depending on fragment header or file header
     int count = n;                                                            //Length of the data to be placed in storage
     int32_t sendDataItr = 0;                                                  //Iterations for the number of pages to be programmed
     int32_t currItr = 0;
-    uint32_t sendDataLen;                                                     //The current length of data to be sent to the file system
-    wear_level_t wearLevelInfo;                                               //Needed for wear level writing
 
     storfs_loc_t currDataHeaderLoc = stream->fileLoc;                         //Location of the current data
     storfs_loc_t nextDataHeaderLoc = currDataHeaderLoc;                       //Next location for data to be written to
@@ -1479,7 +1478,6 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     else
     {
         //Store the current header so it may be updated when initially writting to memory
-        //file_header_store_helper(storfsInst, &currHeaderInfo, currDataHeaderLoc, "Write Function");
         currHeaderInfo = stream->fileInfo;
 
         // Delete the file to be written to
@@ -1522,7 +1520,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         //If the string length is greater than a page size ensure the sent data can maximally be the page size
         if((count + headerLen) > storfsInst->pageSize)
         {
-            sendDataLen = storfsInst->pageSize;
+            wearLevelInfo.sendDataLen = storfsInst->pageSize;
             count -= (storfsInst->pageSize - headerLen);
 
             //Determine where the fragment location will be at
@@ -1545,10 +1543,10 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         }
         else
         {
-            sendDataLen = count + headerLen;
+            wearLevelInfo.sendDataLen = count + headerLen;
 
             //If the total size is written to the page then set the file info flag as block full of data
-            if(sendDataLen == storfsInst->pageSize)
+            if(wearLevelInfo.sendDataLen == storfsInst->pageSize)
             {
                 currHeaderInfo.fileInfo &= ~(STORFS_INFO_REG_BLOCK_SIGN_EMPTY);
                 currHeaderInfo.fileInfo |= STORFS_INFO_REG_BLOCK_SIGN_FULL;
@@ -1564,7 +1562,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
         //Convert the current header info into a buffer and store it in the first bytes to be programmed
         //Store the data to be programmed as well in the buffer
-        for(int i = headerLen; i < sendDataLen; i++)
+        for(int i = headerLen; i < wearLevelInfo.sendDataLen; i++)
         {
             //If there is items to append to the current buffer
             if(currItr == 0 && ((i - headerLen) < appendHeaderByteLoc))
@@ -1578,7 +1576,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         }
 
         //Calculate CRC
-        currHeaderInfo.crc = STORFS_CRC_CALC(storfsInst, (uint8_t*)(sendBuf + headerLen), (sendDataLen - headerLen));
+        currHeaderInfo.crc = STORFS_CRC_CALC(storfsInst, (uint8_t*)(sendBuf + headerLen), (wearLevelInfo.sendDataLen - headerLen));
 
         //Place Header into buffer
         info_to_buf(headerBuf, &currHeaderInfo);
@@ -1590,7 +1588,6 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         //Wear level handling for information
         wearLevelInfo.headerLen = headerLen;
         wearLevelInfo.sendBuf = sendBuf;
-        wearLevelInfo.sendDataLen = sendDataLen;
         wearLevelInfo.storfsCurrLoc = &currDataHeaderLoc;
         wearLevelInfo.storfsOrigLoc = currDataHeaderLoc;
         wearLevelInfo.storfsPrevLoc = prevDataHeaderLoc;
@@ -1606,7 +1603,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         --sendDataItr;
 
         //Increment the buffer's location to send data
-        str += (sendDataLen - headerLen - appendHeaderByteLoc) * sizeof(uint8_t);
+        str += (wearLevelInfo.sendDataLen - headerLen - appendHeaderByteLoc) * sizeof(uint8_t);
 
         //Set current header location equal to the next, and previous to current
         if(wearLevelInfo.storfsCurrLoc->pageLoc >= nextDataHeaderLoc.pageLoc)
@@ -1631,7 +1628,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
         currItr++;
 
         //Increment read file size remainder
-        stream->fileRead.fileSizeRem += (sendDataLen - headerLen);
+        stream->fileRead.fileSizeRem += (wearLevelInfo.sendDataLen - headerLen);
         STORFS_LOGD(TAG, "Read File Size Remainder %ld", stream->fileRead.fileSizeRem);
 
         //Set the append header byte location to 0
