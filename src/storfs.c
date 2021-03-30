@@ -1715,7 +1715,12 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
         count = stream->fileRead.fileSizeRem;
     }
     
-    STORFS_LOGW(TAG, "File Size count %d", count);
+    //If the count is zero, the file has been completely read, warn the user
+    if(count == 0)
+    {        
+        STORFS_LOGW(TAG, "File has been completely read");
+        return STORFS_OK;
+    }
 
     do
     {
