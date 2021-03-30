@@ -229,7 +229,7 @@ typedef struct storfs{
 } storfs_t;
 
 
- /**
+/**
      * @brief       Mount File System
      *              Used to mount the file system in order to correctly read/write files
      *
@@ -239,7 +239,7 @@ typedef struct storfs{
      * @param       storfsInst  Instance used for the STORfs
      * @param       partName    Name of the root partition
      * @return      STORFS_OK   Succeed
-     */
+*/
 storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName);
 
 /**
@@ -270,15 +270,23 @@ storfs_err_t storfs_mkdir(storfs_t *storfsInst, char *pathToDir);
 storfs_err_t storfs_touch(storfs_t *storfsInst, char *pathToFile);
 
 /** @brief Flags when opening up a file */ 
-typedef uint8_t storfs_file_flags_t;
+typedef struct 
+{
+    storfs_loc_t            readLocPtr;
+    int32_t                 fileSizeRem;
+} storfs_read_t;
+
+/** @brief Flags when opening up a file */ 
+typedef uint32_t storfs_file_flags_t;
 
 /** @brief FILE struct for saving data to when opening up a file */ 
 typedef struct storfs_fopen_file_info{
-    storfs_file_header_t fileInfo;
-    storfs_loc_t fileLoc;
-    storfs_file_flags_t fileFlags;
-    storfs_loc_t filePrevLoc;
-    storfs_file_flags_t filePrevFlags;
+    storfs_file_header_t    fileInfo;
+    storfs_loc_t            fileLoc;
+    storfs_file_flags_t     fileFlags;
+    storfs_loc_t            filePrevLoc;
+    storfs_file_flags_t     filePrevFlags;
+    storfs_read_t           fileRead;    
 } STORFS_FILE;
 
 /**
@@ -340,6 +348,17 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
 */
 storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream);
 
+/**
+     * @brief       rewind
+     *              Sets the pointer of reading/writing a file back to the beginning
+     * 
+     * @attention   To remove a directory and all of its contents stream must be NULL
+     *              
+     * @param       storfsInst  Instance used for the STORfs
+     * @param       stream      File to rewind
+     * @return      STORFS_OK   Succeed
+*/
+storfs_err_t storfs_rewind(storfs_t *storfsInst, STORFS_FILE *stream);
 
 storfs_err_t storfs_display_header(storfs_t *storfsInst, storfs_loc_t loc);
 
