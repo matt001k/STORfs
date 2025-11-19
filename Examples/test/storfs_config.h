@@ -14,5 +14,7 @@
     //#define LOGE
 
 #define STORFS_LOG_DISPLAY_HEADER
+
+#define STORFS_WEAR_LEVEL_RETRY_NUM 2
    
 #endif

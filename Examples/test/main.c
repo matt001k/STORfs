@@ -240,7 +240,7 @@ int main(void) {
     storfs_mount(&fs, "");
 
     //Test deleting a directory
-    storfs_rm(&fs, "C:/HelloDere", NULL);
+    //storfs_rm(&fs, "C:/HelloDere", NULL);
 
     for(int i = 21; i < 30; i++)
     {
