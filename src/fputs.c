@@ -1,14 +1,18 @@
 #include "storfs.h"
 #include "wear.h"
+#include "crc.h"
 #include "core.h"
 
 storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, STORFS_FILE *stream)
 {
     //Sanity Check
-    if(storfsInst == NULL || stream == NULL || str == NULL || n == 0 || stream == NULL)
+    if(!storfsInst || !stream || !str || !stream)
     {
-        STORFS_LOGE(TAG, "Cannot write to file");
-        return STORFS_ERROR;
+        return STORFS_ERR_NULL_POINTER;
+    }
+
+    if (n == 0) {
+        return STORFS_ERR_INVALID_PARAM;
     }
 
     //Error if next write is larger than the page count

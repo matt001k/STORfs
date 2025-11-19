@@ -57,9 +57,9 @@ static storfs_err_t directory_delete_helper(storfs_t *storfsInst, storfs_loc_t r
 storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream)
 {
     //Error Checking
-    if(storfsInst == NULL || pathToFile == NULL)
+    if(!storfsInst || !pathToFile)
     {
-        return STORFS_ERROR;
+        return STORFS_ERR_NULL_POINTER;
     }
 
     STORFS_FILE rmStream;
