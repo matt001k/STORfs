@@ -1,10 +1,11 @@
 #include "storfs.h"
+#include "crc.h"
 #include "core.h"
 
 storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
 {
     if (!storfsInst || !partName) {
-        return STORFS_ERR_INVALID_PARAM;
+        return STORFS_ERR_NULL_POINTER;
     }
 
     storfs_file_header_t firstPartInfo[2];
