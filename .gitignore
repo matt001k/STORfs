@@ -9,6 +9,7 @@ dist/
 
 # Compiled Python bytecode
 *.py[cod]
+**.venv
 
 # Log files
 *.log
@@ -44,4 +45,3 @@ Thumbs.db
 *.flv
 *.mov
 *.wmv
-

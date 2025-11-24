@@ -95,7 +95,7 @@ storfs_err_t storfs_write(const struct storfs *storfsInst, storfs_page_t page,
   at45xxxxx_main_mem_info_t mainMem;
   mainMem.memPageAddr = page;
   mainMem.memByteAddr = byte;
-    
+
   err = at45_buf_mem_pg_thru_tx_w_erase(storfsInst->memInst, mainMem, AT45XXXXX_SRAM_BUF_1, \
   		(uint8_t *)buffer, size);
   if(err == AT45XXXXX_OK)
@@ -133,7 +133,7 @@ int main(void)
    	at45Inst.cnfg.dataSize = AT45XXXXX_512B;
     at45Inst.spiInst = &SPIInst;
     at45_memory_init(&at45Inst);
-    
+
     //Initialization structure of STORfs
     storfs_t fs = {
         .read = storfs_read,
@@ -146,7 +146,7 @@ int main(void)
         .pageSize = 512,
         .pageCount = AT45XXXXX_MAX_PAGES,
       };
-    
+
     //Mounting the file system into flash memory
     storfs_mount(&fs, "C:");
 }
@@ -183,7 +183,7 @@ Other examples are to test out STORfs on an MCU.
 
 ## Configuring STORfs
 
-Configuration for STORfs can be found within the storfs_config.h file. 
+Configuration for STORfs can be found within the storfs_config.h file.
 
 Within this file a set of defines are used to declare certain functionalities within STORfs.
 
@@ -193,7 +193,7 @@ Further details below
 #define  STORFS_MAX_FILE_NAME       32	//Maximum length for a file name, cannot be below 4 char
 
 #define STORFS_NO_LOG 					//Used to determine whether or not STORfs will use logging
-#define STORFS_LOGI(TAG, fmt, ...)		//Function-like macro to define the logging mechanism      
+#define STORFS_LOGI(TAG, fmt, ...)		//Function-like macro to define the logging mechanism
 #define STORFS_LOGD(TAG, fmt, ...)		//Function-like macro to define the logging mechanism
 #define STORFS_LOGW(TAG, fmt, ...)		//Function-like macro to define the logging mechanism
 #define STORFS_LOGE(TAG, fmt, ...)		//Function-like macro to define the logging mechanism
@@ -208,7 +208,7 @@ Further details below
 
 ## STORfs Functions
 
-``` c 
+``` c
 storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName);
 ```
 
@@ -229,14 +229,14 @@ storfs_err_t storfs_mkdir(storfs_t *storfsInst, char *pathToDir);
 
 - Can create multiple directories within one path
 
-``` c 
+``` c
 storfs_err_t storfs_touch(storfs_t *storfsInst, char *pathToFile);
 ```
 
 - Makes a new file in the according path
 - Only a single file can be made per call
 
-``` C 
+``` C
 storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode, STORFS_FILE *stream)
 ```
 
@@ -281,7 +281,7 @@ storfs_err_t storfs_rewind(storfs_t *storfsInst, STORFS_FILE *stream);
 
 STORfs is laid out similar to a tree type data structure, utilizing children and siblings.
 
-The following pictures how files/directories are laid out within the system: 
+The following pictures how files/directories are laid out within the system:
 
 <div style="text-align:center"><img src="Documentation\images\STORfs_Layout.svg" /></div>
 
@@ -304,7 +304,7 @@ Each file is laid out with a header. The header consists of:
   - Points to file fragment Location
 - File Size
   - Up to 4GB
-- CRC 
+- CRC
   - Can be user defined
 
 
@@ -327,7 +327,7 @@ The root directory has information pertaining to the next available byte to writ
 
 CRC is calculated differently depending on the type of item being stored in the file system.
 
-The root and directories will calculate the CRC based on its **filename** along with very newly created files. 
+The root and directories will calculate the CRC based on its **filename** along with very newly created files.
 
 *Ex:* If the root name is *C:* the CRC will be calculated based on the 2 bytes of the file name, this is depending on the formula provided by the user or the already designed CRC function in storfs.c
 
@@ -374,3 +374,17 @@ STORfs has been tested and validated on the following hardware:
 
 
 
+## Unit Tests
+
+Unit tests for project source files can be found in the `test` directory.
+These tests utilize [Ceedling](https://github.com/ThrowTheSwitch/Ceedling),
+a unit testing framework targeted toward `C` projects.
+In order to run the unit tests the following tools are needed:
+
+- [GNU Make](https://www.gnu.org/software/make/)
+- [Docker](https://https://www.docker.com/)
+
+In order to run the unit tests:
+
+- `cd` into the `test` directory
+- run `make`
