@@ -20,6 +20,18 @@
 
 #include <stdint.h>
 
+/** @brief Flags used for FILE struct */
+#define STORFS_FILE_WRITE_FLAG                  0x00000001
+#define STORFS_FILE_READ_FLAG                   0x00000002
+#define STORFS_FILE_APPEND_FLAG                 0x00000004
+#define STORFS_FILE_PARENT_FLAG                 0x00000008
+#define STORFS_FILE_SIBLING_FLAG                0x00000010
+#define STORFS_FILE_INIT_HEADER_WRITE           0x00000020
+#define STORFS_FILE_HEADER_WRITE                0x00000040
+#define STORFS_FILE_WRITE_INIT_FLAG             0x00000080
+#define STORFS_FILE_REWIND_FLAG                 0x00000100
+#define STORFS_FILE_DELETED_FLAG                0xF1
+
 /** @brief Maximum file name characters for the header information 
  *  cannot be less than 4 characters*/ 
 #ifndef STORFS_MAX_FILE_NAME
@@ -101,12 +113,53 @@ typedef uint16_t storfs_crc_t;
 
 /** @brief Error handling enum */ 
 typedef enum {
-    STORFS_OK = 0x0UL,
-    STORFS_ERROR,
-    STORFS_WRITE_FAILED,
-    STORFS_READ_FAILED,
-    STORFS_MEMORY_DISCREPENCY,
-    STORFS_CRC_ERR,
+    STORFS_ERROR = -1,
+
+    STORFS_OK = 0,
+    
+    // File/Directory errors
+    STORFS_ERR_NOT_FOUND = 1,
+    STORFS_ERR_EXISTS = 2,
+    STORFS_ERR_IS_DIR = 3,
+    STORFS_ERR_IS_FILE = 4,
+    STORFS_ERR_NOT_EMPTY = 5,
+    
+    // Space/Resource errors
+    STORFS_ERR_NO_SPACE = 10,
+    STORFS_ERR_NO_FREE_BLOCKS = 11,
+    STORFS_ERR_TOO_MANY_OPEN_FILES = 12,
+    
+    // I/O errors
+    STORFS_ERR_IO = 20,
+    STORFS_ERR_READ_FAILED = 21,
+    STORFS_ERR_WRITE_FAILED = 22,
+    STORFS_ERR_ERASE_FAILED = 23,
+    STORFS_ERR_VERIFY_FAILED = 24,
+    
+    // Data integrity errors
+    STORFS_ERR_CORRUPT = 30,
+    STORFS_ERR_CRC_MISMATCH = 31,
+    STORFS_ERR_BAD_BLOCK = 32,
+    STORFS_ERR_HEADER_CORRUPT = 33,
+    
+    // Parameter errors
+    STORFS_ERR_INVALID_PARAM = 40,
+    STORFS_ERR_INVALID_PATH = 41,
+    STORFS_ERR_PATH_TOO_LONG = 42,
+    STORFS_ERR_NAME_TOO_LONG = 43,
+    STORFS_ERR_INVALID_MODE = 44,
+    STORFS_ERR_NULL_POINTER = 45,
+    
+    // State errors
+    STORFS_ERR_NOT_MOUNTED = 50,
+    STORFS_ERR_ALREADY_MOUNTED = 51,
+    STORFS_ERR_FILE_NOT_OPEN = 52,
+    STORFS_ERR_FILE_ALREADY_OPEN = 53,
+    
+    // Hardware errors
+    STORFS_ERR_NO_SYNC = 60,
+    STORFS_ERR_TIMEOUT = 61,
+    STORFS_ERR_DEVICE_ERROR = 62
 } storfs_err_t;
 
 /** @brief Location struct for the specific page and byte in that page to read/write to/from */ 
@@ -290,74 +343,74 @@ typedef struct storfs_fopen_file_info{
 } STORFS_FILE;
 
 /**
-     * @brief       fopen
-     *              Used to make/open a file within the file system
-     *
-     * @attention   A single file may only be made at once
-     * @attention   The pathToDir must be a full path from the root to the current directory
-     * @attention   mode flags include:
-     *                  - w: write only and truncate existing file
-     *                  - w+: read/write and truncate existing file
-     *                  - r: read only
-     *                  - r+: read/write and truncate the existing file
-     *                  - a: write only and append existing file
-     *                  - a+: read/write and append existing file
-     *              
-     * @param       storfsInst  Instance used for the STORfs
-     * @param       pathToFile  Path to the file from the root partition
-     * @param       mode        Mode to open the file in
-     * @param       stream      File to save the file information from the function
-     * @return      STORFS_OK   Succeed
-*/
+ * @brief       fopen
+ *              Used to make/open a file within the file system
+ *
+ * @attention   A single file may only be made at once
+ * @attention   The pathToDir must be a full path from the root to the current directory
+ * @attention   mode flags include:
+ *                  - w: write only and truncate existing file
+ *                  - w+: read/write and truncate existing file
+ *                  - r: read only
+ *                  - r+: read/write and truncate the existing file
+ *                  - a: write only and append existing file
+ *                  - a+: read/write and append existing file
+ *              
+ * @param       storfsInst  Instance used for the STORfs
+ * @param       pathToFile  Path to the file from the root partition
+ * @param       mode        Mode to open the file in
+ * @param       stream      File to save the file information from the function
+ * @return      STORFS_OK   Succeed
+ */
 storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode, STORFS_FILE *stream);
 
 /**
-     * @brief       fputs
-     *              Used to write to a file
-     *              
-     * @param       storfsInst  Instance used for the STORfs
-     * @param       str         data to write to the file
-     * @param       n           length of data to write to the file
-     * @param       stream      File to write to
-     * @return      STORFS_OK   Succeed
-*/
+ * @brief       fputs
+ *              Used to write to a file
+ *              
+ * @param       storfsInst  Instance used for the STORfs
+ * @param       str         data to write to the file
+ * @param       n           length of data to write to the file
+ * @param       stream      File to write to
+ * @return      STORFS_OK   Succeed
+ */
 storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, STORFS_FILE *stream);
 
 /**
-     * @brief       fgets
-     *              Used to read a file
-     *              
-     * @param       storfsInst  Instance used for the STORfs
-     * @param       str         data to read from the file
-     * @param       n           length of data to read from the file
-     * @param       stream      File to read from
-     * @return      STORFS_OK   Succeed
-*/
+ * @brief       fgets
+ *              Used to read a file
+ *              
+ * @param       storfsInst  Instance used for the STORfs
+ * @param       str         data to read from the file
+ * @param       n           length of data to read from the file
+ * @param       stream      File to read from
+ * @return      STORFS_OK   Succeed
+ */
 storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *stream);
 
 /**
-     * @brief       rm
-     *              Used to remove a file
-     * 
-     * @attention   To remove a directory and all of its contents stream must be NULL
-     *              
-     * @param       storfsInst  Instance used for the STORfs
-     * @param       pathToFile  Path to the file from the root partition
-     * @param       stream      File to delete
-     * @return      STORFS_OK   Succeed
-*/
+ * @brief       rm
+ *              Used to remove a file
+ * 
+ * @attention   To remove a directory and all of its contents stream must be NULL
+ *              
+ * @param       storfsInst  Instance used for the STORfs
+ * @param       pathToFile  Path to the file from the root partition
+ * @param       stream      File to delete
+ * @return      STORFS_OK   Succeed
+ */
 storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream);
 
 /**
-     * @brief       rewind
-     *              Sets the pointer of reading/writing a file back to the beginning
-     * 
-     * @attention   After rewinding the file back to it's origin, appending will truncate the file
-     *              
-     * @param       storfsInst  Instance used for the STORfs
-     * @param       stream      File to rewind
-     * @return      STORFS_OK   Succeed
-*/
+ * @brief       rewind
+ *              Sets the pointer of reading/writing a file back to the beginning
+ * 
+ * @attention   After rewinding the file back to it's origin, appending will truncate the file
+ *              
+ * @param       storfsInst  Instance used for the STORfs
+ * @param       stream      File to rewind
+ * @return      STORFS_OK   Succeed
+ */
 storfs_err_t storfs_rewind(storfs_t *storfsInst, STORFS_FILE *stream);
 
 storfs_err_t storfs_display_header(storfs_t *storfsInst, storfs_loc_t loc);
