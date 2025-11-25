@@ -6,12 +6,13 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
     if(storfsInst == NULL || stream == NULL || stream->fileFlags == STORFS_FILE_DELETED_FLAG)
     {
         STORFS_LOGE(TAG, "Cannot read from file, it does not exist");
-        return STORFS_ERROR;
+        return STORFS_ERR_NULL_POINTER;
     }
+
     if(stream->fileFlags == STORFS_FILE_WRITE_FLAG || stream->fileFlags == STORFS_FILE_APPEND_FLAG)
     {
         STORFS_LOGE(TAG, "Cannot read file, in incorrect mode");
-        return STORFS_ERROR;
+        return STORFS_ERR_INVALID_MODE;
     }
 
     STORFS_LOGI(TAG, "Reading from file %s", stream->fileInfo.fileName);

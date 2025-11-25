@@ -1,5 +1,6 @@
 #include "storfs.h"
 #include "core.h"
+#include "crc.h"
 #include <string.h>
 
 static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *currentOpenFile)
@@ -43,9 +44,56 @@ static storfs_err_t fopen_write_flag_helper(storfs_t *storfsInst, char *pathToFi
     return STORFS_OK;
 }
 
+static storfs_err_t validate_path(const char *path) {
+    size_t len = strlen(path);
+    if (!len) {
+        return STORFS_ERR_INVALID_PATH;
+    }
+    
+    // Check for invalid characters
+    for (size_t i = 0; i < len; i++) {
+        char c = path[i];
+        // Disallow control characters and other problematic chars
+        if (c < 32 || c == 127) {
+            return STORFS_ERR_INVALID_PATH;
+        }
+    }
+    
+    // Check for path traversal attempts
+    if (strstr(path, "..")) {
+        return STORFS_ERR_INVALID_PATH;
+    }
+    
+    return STORFS_OK;
+}
+
+static storfs_err_t validate_mode(const char *mode) {
+    // Valid modes: r, r+, w, w+, a, a+
+    if (!strcmp(mode, "r") || !strcmp(mode, "r+") ||
+        !strcmp(mode, "w") || !strcmp(mode, "w+") ||
+        !strcmp(mode, "a") || !strcmp(mode, "a+")) {
+        return STORFS_OK;
+    }
+    
+    return STORFS_ERR_INVALID_MODE;
+}
 
 storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * mode, STORFS_FILE *stream)
 {
+    if (!storfsInst || !pathToFile || !mode || !stream) {
+        return STORFS_ERR_INVALID_PARAM;
+    }
+
+    storfs_err_t err = validate_path(pathToFile);
+    if (err != STORFS_OK) {
+        return err;
+    }
+
+    err = validate_mode(mode);
+    if (err != STORFS_OK) {
+        return err;
+    }
+
     STORFS_LOGI(TAG, "Opening File at %s in %s mode", pathToFile, mode);
     storfs_file_flags_t fileFlags = 0;
 
