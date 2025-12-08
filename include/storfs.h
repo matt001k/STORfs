@@ -91,10 +91,10 @@
 
 
 /** @brief Alias for size in bytes of items */ 
-typedef uint64_t storfs_size_t;
+typedef uint32_t storfs_size_t;
 
 /** @brief Describes the page location */ 
-typedef uint64_t storfs_page_t;
+typedef uint32_t storfs_page_t;
 
 /** @brief Describes the byte location */ 
 typedef uint32_t storfs_byte_t;
@@ -179,6 +179,11 @@ typedef struct {
     storfs_file_size_t fileSize;
     storfs_crc_t crc;
 } storfs_file_header_t;
+
+typedef struct {
+  storfs_page_t page_count;
+  uint32_t hint;
+} Bitmap;
 
 /** @brief "Cache" for items in the current filesystem instance */ 
 typedef struct 
@@ -279,6 +284,9 @@ typedef struct storfs{
     /** @brief Information cached for use throughout the instance */
     storfs_cached_info_t cachedInfo;
 
+    Bitmap bitmap;
+
+    uint8_t *buf;
 } storfs_t;
 
 

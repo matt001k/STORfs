@@ -1,4 +1,5 @@
-*build
+**build/
+**cache/
 
 # Node artifact files
 node_modules/
