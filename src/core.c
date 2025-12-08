@@ -31,30 +31,6 @@ typedef enum {
 #define STORFS_FILE_REWIND_FLAG       0x00000100
 #define STORFS_FILE_DELETED_FLAG      0xF1
 
-#ifndef STORFS_USE_CRC
-#define STORFS_POLYNOMIAL 0x8408
-uint16_t storfs_crc16(const uint8_t *buf, uint32_t bufLen) {
-  uint8_t  i;
-  uint32_t data;
-  uint16_t crc = 0xffff;
-  if(bufLen == 0)
-    return (~crc);
-  do {
-    for(i = 0, data = (unsigned int)0xff & *buf++; i < 8; i++, data >>= 1) {
-      if((crc & 0x0001) ^ (data & 0x0001))
-        crc = (crc >> 1) ^ STORFS_POLYNOMIAL;
-      else
-        crc >>= 1;
-    }
-  } while(--bufLen);
-  crc  = ~crc;
-  data = crc;
-  crc  = (crc << 8) | (data >> 8 & 0xff);
-  return (crc);
-}
-
-#endif
-
 static const char *TAG = "STORfs";
 
 /** @brief Functions to turn a uint8_t buffer to proper struct used by the file
