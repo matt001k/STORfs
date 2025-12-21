@@ -1,3 +1,4 @@
+#include "atomic.h"
 #include "bitmap.h"
 #include "fake_flash.h"
 #include "unity.h"
@@ -39,13 +40,11 @@ void test_bitmap_find_and_alloc(void) {
   }
 
   // Test that the file system is full
-  TEST_ASSERT_EQUAL(bitmap_alloc(fs, &page), STORFS_ERR_NO_SPACE);
+  TEST_ASSERT_EQUAL(bitmap_alloc(fs, &page), STORFS_ERR_NO_FREE_BLOCKS);
 
   // Test invalid args
   TEST_ASSERT_EQUAL(bitmap_alloc(NULL, &page), STORFS_ERR_NULL_POINTER);
-  TEST_ASSERT_EQUAL(bitmap_alloc(fs, NULL), STORFS_ERR_NULL_POINTER);
   TEST_ASSERT_EQUAL(bitmap_find_next(NULL, &page), STORFS_ERR_NULL_POINTER);
-  TEST_ASSERT_EQUAL(bitmap_find_next(fs, NULL), STORFS_ERR_NULL_POINTER);
 
   // Test failure to read
   fake_storfs_fail_op(READ, true);

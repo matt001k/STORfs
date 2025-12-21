@@ -1,5 +1,6 @@
 #include "bitmap.h"
 
+#include "atomic.h"
 #include "core.h"
 
 #include <string.h>
@@ -7,19 +8,6 @@
 #define BITMAP_PAGE_OFFSET        1
 #define STORFS_PROTECTED_PAGES(f) (f->bitmap.page_count + BITMAP_PAGE_OFFSET)
 #define PAGE_NO_ALLOC             0
-
-static storfs_err_t write_op(storfs_t *fs, storfs_page_t page) {
-  // TODO: replace with atomic operation
-  if(fs->erase(fs, page) != STORFS_OK) {
-    return STORFS_ERR_ERASE_FAILED;
-  }
-
-  if(fs->write(fs, page, 0, fs->buf, fs->pageSize) != STORFS_OK) {
-    return STORFS_ERR_WRITE_FAILED;
-  }
-
-  return STORFS_OK;
-}
 
 static storfs_err_t
 read_bitmap_page(storfs_t *fs, storfs_page_t page, uint32_t *byte) {
@@ -42,7 +30,7 @@ static inline storfs_err_t write_bitmap_page(storfs_t *fs, storfs_page_t page) {
   uint32_t byte_offset = DIV_BY_8(page);
   uint32_t page_offset = byte_offset / fs->pageSize;
 
-  return write_op(fs, page_offset + BITMAP_PAGE_OFFSET);
+  return atomic_write(fs, page_offset + BITMAP_PAGE_OFFSET);
 }
 
 static storfs_err_t get_byte(storfs_t *fs, storfs_page_t page, uint8_t **byte) {
@@ -114,7 +102,7 @@ find_next_available_page(storfs_t *fs, uint8_t alloc, storfs_page_t *page) {
   }
 
   if(i == fs->pageCount) {
-    err = STORFS_ERR_NO_SPACE;
+    err = STORFS_ERR_NO_FREE_BLOCKS;
   }
 
   if(err == STORFS_OK) {
@@ -173,7 +161,7 @@ storfs_err_t bitmap_create(storfs_t *fs) {
 
     if(!(i % bits_per_page) || i == fs->pageCount) {
       uint32_t page = CEIL_DIV(i, bits_per_page);
-      err           = write_op(fs, page);
+      err           = atomic_write(fs, page);
       memset(fs->buf, 0, fs->pageSize);
     }
 
@@ -186,7 +174,7 @@ storfs_err_t bitmap_create(storfs_t *fs) {
 }
 
 storfs_err_t bitmap_find_next(storfs_t *fs, storfs_page_t *page) {
-  if(!fs || !page) {
+  if(!fs) {
     return STORFS_ERR_NULL_POINTER;
   }
 
@@ -194,7 +182,7 @@ storfs_err_t bitmap_find_next(storfs_t *fs, storfs_page_t *page) {
 }
 
 storfs_err_t bitmap_alloc(storfs_t *fs, storfs_page_t *page) {
-  if(!fs || !page) {
+  if(!fs) {
     return STORFS_ERR_NULL_POINTER;
   }
 
@@ -219,7 +207,7 @@ storfs_err_t bitmap_free(storfs_t *fs, storfs_page_t page) {
 
   set_alloc(page, byte, PAGE_FREE);
 
-  return write_op(fs, page);
+  return atomic_write(fs, page);
 }
 
 storfs_err_t

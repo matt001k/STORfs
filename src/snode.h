@@ -45,9 +45,15 @@ typedef struct {
 _Static_assert(sizeof(SNode) == SNODE_TOTAL_SIZE,
                "Snode structure is not equivalent to expected size");
 
-storfs_err_t
-snode_create(storfs_t *fs, storfs_page_t page, storfs_byte_t byte, SNode node);
-storfs_err_t
-snode_lookup(storfs_t *fs, storfs_page_t page, storfs_byte_t byte, SNode *node);
-
+storfs_err_t snode_create(storfs_t *fs, const char *name, storfs_page_t *page);
+storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNode *node);
+storfs_err_t snode_write_data(storfs_t      *fs,
+                              storfs_page_t  page,
+                              const uint8_t *data,
+                              uint32_t       size);
+storfs_err_t snode_read_data(storfs_t     *fs,
+                             storfs_page_t page,
+                             storfs_byte_t offset,
+                             uint8_t      *data,
+                             uint32_t      size);
 #endif
