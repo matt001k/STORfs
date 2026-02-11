@@ -1,6 +1,6 @@
-CC = gcc
+CC ?= gcc
 
-CFLAGS = -g -Wall -Wno-format
+CFLAGS ?= -g -Wall -Wno-format
 
 # C Sources
 C_SOURCES = \
@@ -34,7 +34,7 @@ TARGET = test
 C_OBJECTS = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
 vpath %.c $(sort $(dir $(C_SOURCES)))
 
-LDFLAGS = -Xlinker -Map=$(BUILD_DIR)/$(TARGET).map
+LDFLAGS ?= -Xlinker -Map=$(BUILD_DIR)/$(TARGET).map
 
 # Build the executable
 all: $(BUILD_DIR)/$(TARGET)
@@ -46,7 +46,7 @@ $(BUILD_DIR)/$(TARGET): $(C_OBJECTS)
 	$(CC) $(CFLAGS) $(C_INCLUDES) -o $(BUILD_DIR)/$(TARGET) $(C_OBJECTS)
 
 $(BUILD_DIR):
-	mkdir $@
+	mkdir -p $@
 
 clean:
 	-rm -fr $(BUILD_DIR)
