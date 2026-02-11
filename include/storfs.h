@@ -374,7 +374,7 @@ storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile, const char * m
  * @param       stream      File to write to
  * @return      STORFS_OK   Succeed
  */
-storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, STORFS_FILE *stream);
+storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const storfs_size_t n, STORFS_FILE *stream);
 
 /**
  * @brief       fgets

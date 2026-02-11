@@ -9,7 +9,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
     }
 
     storfs_file_header_t firstPartInfo[2];
-    uint32_t strLen = 0;
+    storfs_size_t strLen = 0;
 
     STORFS_LOGI(TAG, "Mounting File System");
 
@@ -61,7 +61,7 @@ storfs_err_t storfs_mount(storfs_t *storfsInst, char *partName)
         }
 
         //Store file parameters
-        for(int i = 0; i < strLen; i++)
+        for(storfs_size_t i = 0; i < strLen; i++)
         {
             firstPartInfo[0].fileName[i] = partName[i];
         }
