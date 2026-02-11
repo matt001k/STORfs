@@ -155,7 +155,7 @@ storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stre
             }
 
             info_to_buf(updatedHeader, &storfsPreviousHeader);
-            for(int i = 0; i < storfsInst->pageSize; i++)
+            for(storfs_size_t i = 0; i < storfsInst->pageSize; i++)
             {
                 if(i < STORFS_HEADER_TOTAL_SIZE)
                 {

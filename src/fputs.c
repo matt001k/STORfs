@@ -3,7 +3,7 @@
 #include "crc.h"
 #include "core.h"
 
-storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, STORFS_FILE *stream)
+storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const storfs_size_t n, STORFS_FILE *stream)
 {
     //Sanity Check
     if(!storfsInst || !stream || !str || !stream)
@@ -34,7 +34,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
     uint8_t sendBuf[storfsInst->pageSize];                                    //Buffer of data to send to flash device                                      
     uint8_t headerBuf[STORFS_HEADER_TOTAL_SIZE];                              //Buffer used to store the header of each page
     uint32_t headerLen = STORFS_HEADER_TOTAL_SIZE;                            //Length of header to be used depending on fragment header or file header
-    int count = n;                                                            //Length of the data to be placed in storage
+    storfs_size_t count = n;                                                            //Length of the data to be placed in storage
     int32_t sendDataItr = 0;                                                  //Iterations for the number of pages to be programmed
     int32_t currItr = 0;
 
@@ -246,10 +246,10 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
         //Convert the current header info into a buffer and store it in the first bytes to be programmed
         //Store the data to be programmed as well in the buffer
-        for(int i = headerLen; i < wearLevelInfo.sendDataLen; i++)
+        for(storfs_size_t i = headerLen; i < wearLevelInfo.sendDataLen; i++)
         {
             //If there is items to append to the current buffer
-            if(currItr == 0 && ((i - headerLen) < appendHeaderByteLoc))
+            if(currItr == 0 && ((i - headerLen) < (storfs_size_t)appendHeaderByteLoc))
             {
                 continue;
             }
@@ -264,7 +264,7 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str, const int n, ST
 
         //Place Header into buffer
         info_to_buf(headerBuf, &currHeaderInfo);
-        for(int i = 0; i < headerLen; i++)
+        for(storfs_size_t i = 0; i < headerLen; i++)
         {
             sendBuf[i] = headerBuf[i];
         }

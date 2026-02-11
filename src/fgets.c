@@ -21,7 +21,7 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
     uint32_t recvDataLen;                                       //Current length to read from file
     storfs_file_header_t currHeaderInfo;                        //Info of the current in the file
     uint32_t headerLen = STORFS_HEADER_TOTAL_SIZE;              //Fragment or file header length
-    int count = n;                                              //Storage for total number of bytes to be read from the file
+    storfs_size_t count = n;                                              //Storage for total number of bytes to be read from the file
     storfs_loc_t recvDataHeaderLoc;                             //The location of the current file header in memory
     
     recvDataHeaderLoc.pageLoc = stream->fileRead.readLocPtr.pageLoc;
@@ -30,7 +30,7 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *s
     file_header_store_helper(storfsInst, &currHeaderInfo, recvDataHeaderLoc, "fgets");
     
     //Determine the number of iterations needed to read from the file
-    if(count < stream->fileRead.fileSizeRem)
+    if(count < (storfs_size_t)stream->fileRead.fileSizeRem)
     {
         if(count > storfsInst->pageSize)
         {
