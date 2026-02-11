@@ -1,5 +1,6 @@
 #include "wear.h"
 #include "core.h"
+#include "crc.h"
 #include <stdint.h>
 
 /** @brief Wear handling enum */ 
