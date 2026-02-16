@@ -13,7 +13,7 @@
 #define STORFS_LOGE(TAG, fmt, ...)
 #define STORFS_LOG_DISPLAY_HEADER
 
-#define STORFS_USE_CRC
+#define STORFS_USE_CRC 0
 
 #define STORFS_WEAR_LEVEL_RETRY_NUM
 

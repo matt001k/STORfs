@@ -1,11 +1,11 @@
 #include "fake_flash.h"
 
 #include <stdint.h>
+#include <string.h>
 
 #define MEMORY_SIZE 33550336
 
 #define PAGE_SIZE 512
-static uint8_t flash_sim[MEMORY_SIZE];
 
 static storfs_err_t storfs_read(const struct storfs *fs,
                                 storfs_page_t        page,
@@ -49,19 +49,40 @@ static storfs_err_t storfs_sync(const struct storfs *fs) {
   return STORFS_OK;
 }
 
-storfs *fake_storfs_init(void) {}
-static storfs fs =
-    {
-        .read = storfs_read,
-        .write = storfs_write,
-        .erase = storfs_erase,
-        .sync = storfs_sync,
-        .memInst = NULL,
-        .firstPageLoc = 0,
-        .firstByteLoc = 0,
-        .pageSize = PAGE_SIZE,
-        .pageCount = MEMORY_SIZE / PAGE_SIZE,
-} :
+storfs_t *fake_storfs_init(void) {
+  static uint8_t  buf[PAGE_SIZE] = { 0 };
+  static storfs_t fs             = {
+                .read         = storfs_read,
+                .write        = storfs_write,
+                .erase        = storfs_erase,
+                .sync         = storfs_sync,
+                .memInst      = NULL,
+                .firstPageLoc = 0,
+                .firstByteLoc = 0,
+                .pageSize     = PAGE_SIZE,
+                .pageCount    = MEMORY_SIZE / PAGE_SIZE,
+                .working_buf  = buf,
+  };
 
-    return fs;
+  memset(buf, 0, sizeof(buf));
+  memset(&ctx.flash_sim, 0xFF, sizeof(ctx.flash_sim));
+  return &fs;
+}
+
+storfs_page_t fake_storfs_get_page_count(void) {
+  return MEMORY_SIZE / PAGE_SIZE;
+}
+
+storfs_byte_t fake_storfs_get_page_size(void) {
+  return PAGE_SIZE;
+}
+
+void fake_storfs_fail_op(FlashOperation op, bool fail, uint32_t count) {
+  if(fail) {
+    ctx.fail_flag |= 1 << op;
+    ctx.fail_count[op] = count;
+  } else {
+    ctx.fail_flag &= ~(1 << op);
+    ctx.fail_tracker[op] = 0;
+  }
 }

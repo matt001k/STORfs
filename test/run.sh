@@ -17,7 +17,7 @@ then
         print_help
     elif [ "$arg" = "-t" ] || [ "$arg" = "--test" ]
     then
-        cd /storfs/test
+        cd ./test
         if [ -n "$2" ]
         then
             ceedling gcov:$2
