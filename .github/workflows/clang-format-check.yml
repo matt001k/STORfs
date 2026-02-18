@@ -1,0 +1,45 @@
+name: ClangFormat Check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt update
+          sudo apt install -y clang-format
+
+      - name: Check formatting
+        run: |
+          FILES=$(git ls-files '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp' '*.hxx')
+
+          if [ -z "$FILES" ]; then
+            echo "No file(s) were found"
+            exit 0
+          fi
+
+          UNFORMATTED=""
+
+          for f in $FILES; do
+            if ! clang-format --dry-run --Werror "$f" >/dev/null 2>&1; then
+              UNFORMATTED="$UNFORMATTED\n$f"
+            fi
+          done
+
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following files are not properly formatted:"
+            echo -e "$UNFORMATTED"
+            exit 1
+          fi
+
+          echo "All files are properly formatted"
+          exit 0
