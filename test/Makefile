@@ -10,4 +10,4 @@ init:
 	@docker build -t storfs .
 
 test: init
-	@docker run --rm -ti -v "./../":"/storfs" storfs -t $(Arguments)
+	@docker run --rm -i -v "./../":"/storfs" storfs -t $(Arguments)
