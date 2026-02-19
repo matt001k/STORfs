@@ -38,8 +38,11 @@ read_bitmap_page(storfs_t *fs, storfs_page_t page, uint32_t *byte) {
   uint32_t byte_offset = DIV_BY_8(page);
   uint32_t page_offset = byte_offset / fs->pageSize;
 
-  if(fs->read(fs, page_offset + BITMAP_PAGE_OFFSET, 0, fs->working_buf, fs->pageSize) !=
-     STORFS_OK) {
+  if(fs->read(fs,
+              page_offset + BITMAP_PAGE_OFFSET,
+              0,
+              fs->working_buf,
+              fs->pageSize) != STORFS_OK) {
     return STORFS_ERR_READ_FAILED;
   }
 
@@ -206,8 +209,9 @@ static storfs_err_t get_set_contiguous_pages(storfs_t             *fs,
       fs->bitmap.hint = page;
     } else if(info->request.action == FREE) {
       fs->bitmap.hint = info->request.page;
-    } else if (info->request.action == GET_ALLOCATED) {
-      fs->bitmap.hint = (info->request.page + info->tracking.count) % fs->pageCount;
+    } else if(info->request.action == GET_ALLOCATED) {
+      fs->bitmap.hint =
+          (info->request.page + info->tracking.count) % fs->pageCount;
     }
   }
 
