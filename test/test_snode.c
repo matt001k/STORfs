@@ -4,7 +4,7 @@
 #include "fake_flash.h"
 #include "helper_randomizer.h"
 #include "mock_crc.h"
-#include "snode_extents.h"
+#include "snode.h"
 #include "unity.h"
 
 #include <stddef.h>

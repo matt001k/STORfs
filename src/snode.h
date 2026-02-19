@@ -11,7 +11,7 @@
 #define SNODE_RESERVED_SIZE                                                    \
   (SNODE_TOTAL_SIZE - STORFS_MAX_FILE_NAME - SNODE_INFO_SIZE)
 
-#define DIRECT_BLOCKS_SIZE 8
+#define DIRECT_EXTENT_SIZE 4
 
 // Type flags
 #define SNODE_TYPE_MASK 0x000F
@@ -23,18 +23,20 @@
 #define SNODE_CHECK_TYPE_DIR(snode)  (snode->type & SNODE_TYPE_DIR)
 
 typedef struct {
-  uint32_t parent;
+  storfs_page_t start;
+  storfs_page_t count;
+} SNodeExtent;
+
+typedef struct {
+  uint64_t      modified_time;
+  storfs_page_t parent;
+  storfs_page_t page;
+  SNodeExtent   direct[DIRECT_EXTENT_SIZE];
   struct {
-    uint32_t page;
-    uint32_t byte;
-  } next;
-  uint32_t size;
-  uint32_t modified_time;
-  uint32_t direct[DIRECT_BLOCKS_SIZE];
-  struct {
-    uint32_t single;
-    uint32_t multiple;
+    storfs_page_t single;
+    storfs_page_t multiple;
   } indirect;
+  uint32_t size;
   uint16_t crc;
   uint8_t  type;
   uint8_t  flags;
