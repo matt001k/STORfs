@@ -29,7 +29,7 @@ This document provides guidelines and instructions for contributing.
 
 1. Fork and clone the repository.
 2. The following tools are needed to contribute:
-  - [Docker](https://www.docker.com/)
+  - [Docker](https://www.docker.com/), for local testing only
   - [ClangFormat](https://clang.llvm.org/docs/ClangFormat.html)
     - Most Linux distributions offer this as a standalone package
   - [Make](https://www.gnu.org/software/make/)
