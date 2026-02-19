@@ -31,7 +31,7 @@ typedef struct {
   } result;
   struct {
     storfs_byte_t bytes;  // Bytes processed in the operation (SNodeOpCb)
-    storfs_page_t pages;  // Bytes processed in the operation (SNodeOpCb)
+    storfs_page_t pages;  // Pages processed in the operation (SNodeOpCb)
   } processed;
   struct {
     storfs_page_t extent_pages;  // Tracked number of extent pages
@@ -55,8 +55,8 @@ typedef struct SNodeOpCtx {
   uint32_t      size;         // Size of data
   SNodeOp       op;           // Operation to perform on SNode
   uint8_t       appends : 1;  // Whether operation appends to SNode
-  uint8_t updates_snode : 1;  // Whether the SNode is update from the operation
-  uint8_t truncates : 1;      // Whether the operates truncates SNode data
+  uint8_t updates_snode : 1;  // Whether the SNode is updated from the operation
+  uint8_t truncates : 1;      // Whether the operation truncates SNode data
   uint8_t : 5;
 } SNodeOpCtx;
 
@@ -105,13 +105,14 @@ static storfs_err_t ensure_node_page_allocated(storfs_t                *fs,
   return STORFS_OK;
 }
 
-static inline storfs_page_t calculate_contiguous(SNodeLocationInfo info,
-                                                 storfs_loc_t      logical,
-                                                 SNodeExtent       extent) {
+static inline storfs_page_t calculate_contiguous(const SNodeLocationInfo *info,
+                                                 storfs_loc_t logical,
+                                                 SNodeExtent  extent) {
 
-  storfs_page_t offset_in_extent = logical.pageLoc - info.tracking.extent_pages;
+  storfs_page_t offset_in_extent =
+      logical.pageLoc - info->tracking.extent_pages;
   storfs_page_t remaining_in_extent = extent.count - offset_in_extent;
-  return MIN(info.request.max, remaining_in_extent);
+  return MIN(info->request.max, remaining_in_extent);
 }
 
 static storfs_err_t find_page_in_extents(const SNodeExtent *extents,
@@ -189,7 +190,7 @@ static storfs_err_t find_extent_in_indirect_page(storfs_t     *fs,
   }
 
   info->result.contiguous =
-      calculate_contiguous(*info, logical, extents[extent_count]);
+      calculate_contiguous(info, logical, extents[extent_count]);
   info->result.location.pageLoc = physical_page;
   info->result.location.byteLoc = logical.byteLoc;
   return STORFS_OK;
@@ -241,7 +242,7 @@ static inline storfs_err_t find_direct_location(storfs_t          *fs,
     info->result.location.pageLoc = physical_page;
     info->result.location.byteLoc = logical.byteLoc;
     info->result.contiguous =
-        calculate_contiguous(*info, logical, node->direct[extent_count]);
+        calculate_contiguous(info, logical, node->direct[extent_count]);
     return STORFS_OK;
   }
 
@@ -282,8 +283,7 @@ find_double_indirect_location(storfs_t          *fs,
   // extent_idx is at least the size of the single indirect page
   info->tracking.extent_idx = SINGLE_EXTENT_COUNT(fs);
 
-  storfs_page_t multiple_pre_alloc = node->indirect.multiple;
-  storfs_err_t  err =
+  storfs_err_t err =
       ensure_node_page_allocated(fs, &node->indirect.multiple, info);
   if(err != STORFS_OK) {
     return err;
@@ -449,6 +449,9 @@ static storfs_err_t snode_op(storfs_t *fs, const SNodeOpCtx *ctx) {
   uint32_t     size = ctx->size;
 
   if(ctx->truncates) {
+    if(ctx->offset >= node.size) {
+      return STORFS_ERR_INVALID_PARAM;
+    }
     size = node.size - ctx->offset;
   }
 
@@ -596,7 +599,8 @@ static storfs_err_t snode_read_op(storfs_t          *fs,
   info->result.location.pageLoc++;
   info->processed.bytes += info->tracking.op_size;
 
-  if(info->result.contiguous - info->processed.pages) {
+  // Not needed if operation is complete
+  if(info->result.contiguous - info->processed.pages > 1) {
     err = snode_check_read(fs,
                            info->result.location.pageLoc,
                            0,
@@ -755,6 +759,7 @@ static storfs_err_t snode_erase_op(storfs_t          *fs,
     info->result.contiguous--;
   }
 
+  // If more pages must be freed, do so now
   if(info->result.contiguous) {
     storfs_page_t free_count = 0;
 
@@ -762,6 +767,9 @@ static storfs_err_t snode_erase_op(storfs_t          *fs,
                                  info->result.location.pageLoc,
                                  &free_count,
                                  info->result.contiguous);
+    if(err != STORFS_OK) {
+      return err;
+    }
     processed_bytes += fs->pageSize * info->result.contiguous;
   }
 
