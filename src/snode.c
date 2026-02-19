@@ -58,7 +58,7 @@ static storfs_err_t alloc_page(storfs_t *fs, storfs_page_t *page) {
     return err;
   }
 
-  memset(fs->buf, 0, fs->pageSize);
+  memset(fs->working_buf, 0, fs->pageSize);
 
   return atomic_write(fs, *page);
 }
@@ -86,19 +86,19 @@ static storfs_err_t find_indirect_page(storfs_t          *fs,
   storfs_err_t  err;
   storfs_page_t page;
 
-  err = snode_check_read(fs, indirect_location, 0, fs->buf, fs->pageSize);
+  err = snode_check_read(fs, indirect_location, 0, fs->working_buf, fs->pageSize);
   if(err != STORFS_OK) {
     return err;
   }
 
-  uint32_t *p_page = (uint32_t *)fs->buf;
+  uint32_t *p_page = (uint32_t *)fs->working_buf;
   if(!p_page[idx] && info->op == WRITE) {
     err = alloc_page(fs, &page);
     if(err != STORFS_OK) {
       return err;
     }
 
-    err = snode_check_read(fs, indirect_location, 0, fs->buf, fs->pageSize);
+    err = snode_check_read(fs, indirect_location, 0, fs->working_buf, fs->pageSize);
     if(err != STORFS_OK) {
       return err;
     }
@@ -153,12 +153,12 @@ resolve_multiple_indirect_location(storfs_t          *fs,
   uint32_t page_in_indirect =
       page_in_multiple % DATA_PAGES_PER_INDIRECT_PAGE(fs);
 
-  err = snode_check_read(fs, node->indirect.multiple, 0, fs->buf, fs->pageSize);
+  err = snode_check_read(fs, node->indirect.multiple, 0, fs->working_buf, fs->pageSize);
   if(err != STORFS_OK) {
     return err;
   }
 
-  uint32_t *p_indirect_pages = (uint32_t *)fs->buf;
+  uint32_t *p_indirect_pages = (uint32_t *)fs->working_buf;
 
   if(!p_indirect_pages[indirect_page_idx] && info->op == WRITE) {
     err = alloc_page(fs, &page);
@@ -166,7 +166,7 @@ resolve_multiple_indirect_location(storfs_t          *fs,
       return err;
     }
     err =
-        snode_check_read(fs, node->indirect.multiple, 0, fs->buf, fs->pageSize);
+        snode_check_read(fs, node->indirect.multiple, 0, fs->working_buf, fs->pageSize);
     if(err != STORFS_OK) {
       return err;
     }
@@ -236,12 +236,12 @@ get_location_info(storfs_t *fs, SNode *node, SNodeLocationInfo *info) {
     return err;
   }
 
-  return snode_check_read(fs, info->location.pageLoc, 0, fs->buf, fs->pageSize);
+  return snode_check_read(fs, info->location.pageLoc, 0, fs->working_buf, fs->pageSize);
 }
 
 static storfs_err_t
 snode_update(storfs_t *fs, SNode *node, storfs_page_t page) {
-  storfs_err_t err = snode_check_read(fs, page, 0, fs->buf, fs->pageSize);
+  storfs_err_t err = snode_check_read(fs, page, 0, fs->working_buf, fs->pageSize);
   if(err != STORFS_OK) {
     return err;
   }
@@ -249,7 +249,7 @@ snode_update(storfs_t *fs, SNode *node, storfs_page_t page) {
   node->crc = 0;
   node->crc = storfs_crc16((const uint8_t *)node, sizeof(SNode));
 
-  SNode *write_node = (SNode *)fs->buf;
+  SNode *write_node = (SNode *)fs->working_buf;
   *write_node       = *node;
 
   return atomic_write(fs, page);
@@ -327,7 +327,7 @@ storfs_err_t snode_write_data(storfs_t      *fs,
     uint32_t page_size_left  = fs->pageSize - info.location.byteLoc;
     uint32_t bytes_remaining = size - bytes_written;
     uint32_t write_size      = MIN(bytes_remaining, page_size_left);
-    memcpy(&fs->buf[info.location.byteLoc], &data[bytes_written], write_size);
+    memcpy(&fs->working_buf[info.location.byteLoc], &data[bytes_written], write_size);
 
     err = atomic_write(fs, info.location.pageLoc);
     if(err != STORFS_OK) {
@@ -380,7 +380,7 @@ storfs_err_t snode_read_data(storfs_t     *fs,
     uint32_t page_size_left  = fs->pageSize - info.location.byteLoc;
     uint32_t bytes_remaining = size - bytes_read;
     uint32_t read_size       = MIN(bytes_remaining, page_size_left);
-    memcpy(&data[bytes_read], &fs->buf[info.location.byteLoc], read_size);
+    memcpy(&data[bytes_read], &fs->working_buf[info.location.byteLoc], read_size);
 
     bytes_read += read_size;
   }

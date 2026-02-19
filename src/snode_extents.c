@@ -85,7 +85,7 @@ static inline storfs_err_t alloc_page(storfs_t *fs, storfs_page_t *page) {
     return err;
   }
 
-  memset(fs->buf, 0, fs->pageSize);
+  memset(fs->working_buf, 0, fs->pageSize);
 
   return atomic_write(fs, *page);
 }
@@ -144,12 +144,12 @@ static storfs_err_t find_extent_in_indirect_page(storfs_t     *fs,
   storfs_page_t physical_page;
   storfs_err_t  err;
 
-  err = snode_check_read(fs, indirect_page, 0, fs->buf, fs->pageSize);
+  err = snode_check_read(fs, indirect_page, 0, fs->working_buf, fs->pageSize);
   if(err != STORFS_OK) {
     return err;
   }
 
-  SNodeExtent *extents      = (SNodeExtent *)fs->buf;
+  SNodeExtent *extents      = (SNodeExtent *)fs->working_buf;
   uint32_t     extent_count = EXTENTS_PER_PAGE(fs);
 
   err = find_page_in_extents(extents,
@@ -169,12 +169,12 @@ static storfs_err_t find_extent_in_indirect_page(storfs_t     *fs,
     }
 
     // Must read back in the original page
-    err = snode_check_read(fs, indirect_page, 0, fs->buf, fs->pageSize);
+    err = snode_check_read(fs, indirect_page, 0, fs->working_buf, fs->pageSize);
     if(err != STORFS_OK) {
       return err;
     }
 
-    // Pointer extents still points to fs->buf
+    // Pointer extents still points to fs->working_buf
     extents[extent_count].start = physical_page;
     extents[extent_count].count = info->result.contiguous;
 
@@ -291,12 +291,12 @@ find_double_indirect_location(storfs_t          *fs,
 
   if(node->indirect.multiple) {
     err =
-        snode_check_read(fs, node->indirect.multiple, 0, fs->buf, fs->pageSize);
+        snode_check_read(fs, node->indirect.multiple, 0, fs->working_buf, fs->pageSize);
     if(err != STORFS_OK) {
       return err;
     }
 
-    SNodeExtent   *extents                  = (SNodeExtent *)fs->buf;
+    SNodeExtent   *extents                  = (SNodeExtent *)fs->working_buf;
     storfs_page_t *pages_seen               = &info->tracking.extent_pages;
     storfs_page_t  single_indirect_location = 0;
 
@@ -356,13 +356,13 @@ find_double_indirect_location(storfs_t          *fs,
       err = snode_check_read(fs,
                              node->indirect.multiple,
                              0,
-                             fs->buf,
+                             fs->working_buf,
                              fs->pageSize);
       if(err != STORFS_OK) {
         return err;
       }
 
-      extents          = (SNodeExtent *)fs->buf;
+      extents          = (SNodeExtent *)fs->working_buf;
       extents[i].start = single_indirect_location;
       extents[i].count += info->result.contiguous;
       err = atomic_write(fs, node->indirect.multiple);
@@ -416,7 +416,7 @@ get_location_info(storfs_t *fs, SNode *node, SNodeLocationInfo *info) {
     err = snode_check_read(fs,
                            info->result.location.pageLoc,
                            0,
-                           fs->buf,
+                           fs->working_buf,
                            fs->pageSize);
   }
 
@@ -425,7 +425,7 @@ get_location_info(storfs_t *fs, SNode *node, SNodeLocationInfo *info) {
 
 static storfs_err_t
 snode_update(storfs_t *fs, SNode *node, storfs_page_t page) {
-  storfs_err_t err = snode_check_read(fs, page, 0, fs->buf, fs->pageSize);
+  storfs_err_t err = snode_check_read(fs, page, 0, fs->working_buf, fs->pageSize);
   if(err != STORFS_OK) {
     return err;
   }
@@ -433,7 +433,7 @@ snode_update(storfs_t *fs, SNode *node, storfs_page_t page) {
   node->crc = 0;
   node->crc = storfs_crc16((const uint8_t *)node, sizeof(SNode));
 
-  SNode *write_node = (SNode *)fs->buf;
+  SNode *write_node = (SNode *)fs->working_buf;
   *write_node       = *node;
 
   return atomic_write(fs, page);
@@ -548,9 +548,9 @@ static storfs_err_t snode_write_op(storfs_t          *fs,
                                    const SNodeOpCtx  *ctx) {
   // Zero buffer when starting at page boundary
   if(!info->result.location.byteLoc) {
-    memset(fs->buf, 0, fs->pageSize);
+    memset(fs->working_buf, 0, fs->pageSize);
   }
-  memcpy(&fs->buf[info->result.location.byteLoc],
+  memcpy(&fs->working_buf[info->result.location.byteLoc],
          &ctx->data[info->processed.bytes],
          info->tracking.op_size);
 
@@ -592,7 +592,7 @@ static storfs_err_t snode_read_op(storfs_t          *fs,
 
   storfs_err_t err = STORFS_OK;
   memcpy(&ctx->data[info->processed.bytes],
-         &fs->buf[info->result.location.byteLoc],
+         &fs->working_buf[info->result.location.byteLoc],
          info->tracking.op_size);
 
   info->result.location.byteLoc = 0;
@@ -604,7 +604,7 @@ static storfs_err_t snode_read_op(storfs_t          *fs,
     err = snode_check_read(fs,
                            info->result.location.pageLoc,
                            0,
-                           fs->buf,
+                           fs->working_buf,
                            fs->pageSize);
   }
 
@@ -632,7 +632,7 @@ storfs_err_t snode_read_data(storfs_t     *fs,
 }
 
 static storfs_err_t ensure_node_page_freed(storfs_t *fs, storfs_page_t *page) {
-  SNodeExtent *extents = (SNodeExtent *)fs->buf;
+  SNodeExtent *extents = (SNodeExtent *)fs->working_buf;
   for(uint32_t i = 0; i < fs->pageSize / sizeof(SNodeExtent); i++) {
     if(extents[i].count) {
       return STORFS_OK;
@@ -660,12 +660,12 @@ static storfs_err_t erase_indirect_op(storfs_t                *fs,
                                       const SNodeLocationInfo *info,
                                       storfs_page_t           *page,
                                       uint32_t                 idx) {
-  storfs_err_t err = snode_check_read(fs, *page, 0, fs->buf, fs->pageSize);
+  storfs_err_t err = snode_check_read(fs, *page, 0, fs->working_buf, fs->pageSize);
   if(err != STORFS_OK) {
     return err;
   }
 
-  SNodeExtent *extents = (SNodeExtent *)fs->buf;
+  SNodeExtent *extents = (SNodeExtent *)fs->working_buf;
   erase_decrement_extent(&extents[idx], info);
 
   err = atomic_write(fs, *page);
@@ -699,13 +699,13 @@ erase_handle_extents(storfs_t *fs, SNodeLocationInfo *info, SNode *node) {
     uint32_t single_idx   = total_idx % EXTENTS_PER_PAGE(fs);
 
     err =
-        snode_check_read(fs, node->indirect.multiple, 0, fs->buf, fs->pageSize);
+        snode_check_read(fs, node->indirect.multiple, 0, fs->working_buf, fs->pageSize);
     if(err != STORFS_OK) {
       return err;
     }
 
     // Update indirect page
-    SNodeExtent  *extents       = (SNodeExtent *)fs->buf;
+    SNodeExtent  *extents       = (SNodeExtent *)fs->working_buf;
     storfs_page_t indirect_page = extents[multiple_idx].start;
     err = erase_indirect_op(fs, info, &indirect_page, single_idx);
     if(err != STORFS_OK) {
@@ -714,12 +714,12 @@ erase_handle_extents(storfs_t *fs, SNodeLocationInfo *info, SNode *node) {
 
     // Re-read multiple extent page, update it
     err =
-        snode_check_read(fs, node->indirect.multiple, 0, fs->buf, fs->pageSize);
+        snode_check_read(fs, node->indirect.multiple, 0, fs->working_buf, fs->pageSize);
     if(err != STORFS_OK) {
       return err;
     }
 
-    extents                      = (SNodeExtent *)fs->buf;
+    extents                      = (SNodeExtent *)fs->working_buf;
     SNodeExtent *multiple_extent = &extents[multiple_idx];
     erase_decrement_extent(multiple_extent, info);
     err = atomic_write(fs, node->indirect.multiple);
@@ -749,7 +749,7 @@ static storfs_err_t snode_erase_op(storfs_t          *fs,
 
   // If the byte location is not zero offset, write partial page
   if(info->result.location.byteLoc) {
-    memset(&fs->buf[info->result.location.byteLoc], 0, info->tracking.op_size);
+    memset(&fs->working_buf[info->result.location.byteLoc], 0, info->tracking.op_size);
     err = atomic_write(fs, info->result.location.pageLoc);
     if(err != STORFS_OK) {
       return err;

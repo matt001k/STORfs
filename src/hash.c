@@ -29,7 +29,7 @@ static storfs_err_t hash_get_info(storfs_t              *fs,
                                   const char            *name,
                                   struct HashBucketInfo *info) {
   info->bucket = NULL;
-  info->hash   = (Hash *)fs->buf;
+  info->hash   = (Hash *)fs->working_buf;
 
   if(fs->read(fs, page, 0, info->hash, fs->pageSize) != STORFS_OK) {
     return STORFS_ERR_READ_FAILED;
@@ -52,7 +52,7 @@ storfs_err_t hash_create(storfs_t *fs, storfs_page_t page) {
     return STORFS_ERR_NULL_POINTER;
   }
 
-  Hash *hash_table = fs->buf;
+  Hash *hash_table = fs->working_buf;
   memset(hash_table, 0, fs->pageSize);
   hash_table->magic       = HASH_MAGIC;
   hash_table->max_entries = (fs->pageSize - sizeof(Hash)) / sizeof(Bucket);
