@@ -179,7 +179,7 @@ typedef struct {
 
 typedef struct {
   storfs_page_t page_count;
-  uint32_t hint;
+  uint32_t      hint;
 } Bitmap;
 
 /** @brief "Cache" for items in the current filesystem instance */
