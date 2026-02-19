@@ -2,12 +2,13 @@
 #include "storfs.h"
 
 storfs_err_t storfs_rewind(storfs_t *storfsInst, STORFS_FILE *stream) {
-  if (!storfsInst || !stream || stream->fileFlags == STORFS_FILE_DELETED_FLAG) {
+  if(!storfsInst || !stream || stream->fileFlags == STORFS_FILE_DELETED_FLAG) {
     STORFS_LOGE(TAG, "Error in opening the current file stream");
     return STORFS_ERR_NULL_POINTER;
   }
 
-  STORFS_LOGI(TAG, "Rewinding file %s to original location",
+  STORFS_LOGI(TAG,
+              "Rewinding file %s to original location",
               stream->fileInfo.fileName);
 
   // Set read pointer location

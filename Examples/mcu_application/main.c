@@ -2,27 +2,31 @@
 
 /*** Define user uart output for logging here ***/
 #ifndef LOGI
-#define LOGI(TAG, fmt, ...) // LOGI(TAG, fmt, ##VA_ARGS)
+#define LOGI(TAG, fmt, ...)  // LOGI(TAG, fmt, ##VA_ARGS)
 #endif
 
 /*** Define user wants for file system ***/
-#define MAX_PAGES 1028
+#define MAX_PAGES           1028
 #define FIRST_PAGE_LOCATION 0
 #define FIRST_BYTE_LOCATION 0
-#define MEMORY_INSTANCE NULL
-#define PAGE_SIZE 512
+#define MEMORY_INSTANCE     NULL
+#define PAGE_SIZE           512
 
 static const char *TAG = "Main";
 
-storfs_err_t storfs_read(const struct storfs *storfsInst, storfs_page_t page,
-                         storfs_byte_t byte, uint8_t *buffer,
-                         storfs_size_t size) {
+storfs_err_t storfs_read(const struct storfs *storfsInst,
+                         storfs_page_t        page,
+                         storfs_byte_t        byte,
+                         uint8_t             *buffer,
+                         storfs_size_t        size) {
   /*** Define user read function for the file system ***/
 }
 
-storfs_err_t storfs_write(const struct storfs *storfsInst, storfs_page_t page,
-                          storfs_byte_t byte, uint8_t *buffer,
-                          storfs_size_t size) {
+storfs_err_t storfs_write(const struct storfs *storfsInst,
+                          storfs_page_t        page,
+                          storfs_byte_t        byte,
+                          uint8_t             *buffer,
+                          storfs_size_t        size) {
   /*** Define user write function for the file system ***/
 }
 
@@ -35,7 +39,8 @@ storfs_err_t storfs_sync(const struct storfs *storfsInst) {
 }
 
 static void display_cache(storfs_t fs) {
-  LOGI(TAG, "Cached Data: \r\n \
+  LOGI(TAG,
+       "Cached Data: \r\n \
   root location 1: %ld%ld, %ld \r\n \
   root location 2: %ld%ld, %ld \r\n \
   next open byte: %ld%ld",
@@ -57,18 +62,18 @@ int main(void) {
    * End user configuration of needed drivers here ***/
 
   storfs_t fs = {
-      .read = storfs_read,
-      .write = storfs_write,
-      .erase = storfs_erase,
-      .sync = storfs_sync,
-      .memInst = MEMORY_INSTANCE,
-      .firstByteLoc = FIRST_BYTE_LOCATION,
-      .firstPageLoc = FIRST_PAGE_LOCATION,
-      .pageSize = PAGE_SIZE,
-      .pageCount = MAX_PAGES,
+    .read         = storfs_read,
+    .write        = storfs_write,
+    .erase        = storfs_erase,
+    .sync         = storfs_sync,
+    .memInst      = MEMORY_INSTANCE,
+    .firstByteLoc = FIRST_BYTE_LOCATION,
+    .firstPageLoc = FIRST_PAGE_LOCATION,
+    .pageSize     = PAGE_SIZE,
+    .pageCount    = MAX_PAGES,
   };
 
-  for (int i = 20; i < 55; i++) {
+  for(int i = 20; i < 55; i++) {
     fs.erase(&fs, i);
   }
 
@@ -116,9 +121,9 @@ int main(void) {
 
   // Test writing and reading large data to a file
   int charDelim = 33;
-  for (int i = 0; i < 1024; i++) {
+  for(int i = 0; i < 1024; i++) {
     loadBuffer[i] = charDelim + i;
-    if (charDelim + i > 126) {
+    if(charDelim + i > 126) {
       charDelim -= (126 - 33);
     }
   }
@@ -129,9 +134,9 @@ int main(void) {
   storfs_fgets(&fs, buffer, 1024, &file1);
   buffer[1023] = '\0';
   LOGI(TAG, "Read Buffer %s", buffer);
-  int i = 0;
+  int i         = 0;
   int buffCount = 0;
-  while (buffer[i++] != '\0') {
+  while(buffer[i++] != '\0') {
     buffCount++;
   }
   LOGI(TAG, "Buff count: %d \n", buffCount);
@@ -196,7 +201,7 @@ int main(void) {
   // Test deleting a directory
   storfs_rm(&fs, "C:/HelloDere", NULL);
 
-  for (int i = 21; i < 30; i++) {
+  for(int i = 21; i < 30; i++) {
     location.pageLoc = i;
     storfs_display_header(&fs, location);
   }
@@ -229,7 +234,7 @@ int main(void) {
   storfs_fputs(&fs, loadBuffer, 256, &file1);
   storfs_fputs(&fs, loadBuffer, 1024, &file2);
 
-  for (int i = 21; i < 45; i++) {
+  for(int i = 21; i < 45; i++) {
     location.pageLoc = i;
     storfs_display_header(&fs, location);
   }
@@ -240,9 +245,9 @@ int main(void) {
   LOGI(TAG, "File Read: %s", buffer);
   storfs_fgets(&fs, buffer, 1024, &file2);
   buffer[1024] = '\0';
-  i = 0;
-  buffCount = 0;
-  while (buffer[i++] != '\0') {
+  i            = 0;
+  buffCount    = 0;
+  while(buffer[i++] != '\0') {
     buffCount++;
   }
   LOGI(TAG, "Buff count: %d \n", buffCount);
@@ -250,7 +255,7 @@ int main(void) {
   storfs_fgets(&fs, buffer, 100, &file3);
   buffer[100] = '\0';
   LOGI(TAG, "File Read: %s", buffer);
-  for (int i = 0; i < 512; i++) {
+  for(int i = 0; i < 512; i++) {
     buffer[i] = 0;
   }
   storfs_fgets(&fs, buffer, 512, &file4);
@@ -280,7 +285,7 @@ int main(void) {
   // Removing a directory
   storfs_rm(&fs, "C:/Testing", NULL);
 
-  for (int i = 21; i < 35; i++) {
+  for(int i = 21; i < 35; i++) {
     location.pageLoc = i;
     storfs_display_header(&fs, location);
   }
@@ -305,7 +310,8 @@ int main(void) {
   buffer[762] = '\0';
   LOGI(TAG, "File Read: %s", buffer);
 
-  LOGI(TAG, "fileName %s \r\n \
+  LOGI(TAG,
+       "fileName %s \r\n \
     fileInfo %x \r\n \
     childLocation %lx%lx \r\n \
     siblingLocation %lx%lx \r\n \

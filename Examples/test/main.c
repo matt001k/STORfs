@@ -18,60 +18,67 @@ static void display_cache(storfs_t fs) {
          fs.cachedInfo.rootLocation[0].pageLoc,
          fs.cachedInfo.rootLocation[0].byteLoc,
          fs.cachedInfo.rootLocation[1].pageLoc,
-         fs.cachedInfo.rootLocation[1].byteLoc, fs.cachedInfo.nextOpenByte);
+         fs.cachedInfo.rootLocation[1].byteLoc,
+         fs.cachedInfo.nextOpenByte);
 }
 
-storfs_err_t storfs_read(const struct storfs *storfsInst, storfs_page_t page,
-                         storfs_byte_t byte, uint8_t *buffer,
-                         storfs_size_t size) {
-  if ((byte + size) > PAGESIZE) {
+storfs_err_t storfs_read(const struct storfs *storfsInst,
+                         storfs_page_t        page,
+                         storfs_byte_t        byte,
+                         uint8_t             *buffer,
+                         storfs_size_t        size) {
+  if((byte + size) > PAGESIZE) {
     return STORFS_ERROR;
   }
 
-  for (int i = 0; i < size; i++) {
+  for(int i = 0; i < size; i++) {
     buffer[i] = memorySim[(PAGESIZE * page) + i + byte];
   }
 
   return STORFS_OK;
 }
 
-storfs_err_t storfs_write(const struct storfs *storfsInst, storfs_page_t page,
-                          storfs_byte_t byte, uint8_t *buffer,
-                          storfs_size_t size) {
-  if ((byte + size) > PAGESIZE) {
+storfs_err_t storfs_write(const struct storfs *storfsInst,
+                          storfs_page_t        page,
+                          storfs_byte_t        byte,
+                          uint8_t             *buffer,
+                          storfs_size_t        size) {
+  if((byte + size) > PAGESIZE) {
     return STORFS_ERROR;
   }
-  for (int i = 0; i < size; i++) {
+  for(int i = 0; i < size; i++) {
     memorySim[(PAGESIZE * page) + i + byte] = buffer[i];
   }
   return STORFS_OK;
 }
 
 storfs_err_t storfs_erase(const struct storfs *storfsInst, storfs_page_t page) {
-  for (int i = 0; i < PAGESIZE; i++) {
+  for(int i = 0; i < PAGESIZE; i++) {
     memorySim[(PAGESIZE * page) + i] = 0xFF;
   }
   return STORFS_OK;
 }
 
-storfs_err_t storfs_sync(const struct storfs *storfsInst) { return STORFS_OK; }
+storfs_err_t storfs_sync(const struct storfs *storfsInst) {
+  return STORFS_OK;
+}
 
 int main(void) {
 
-  for (int i = 0; i < MEMORYSIMSIZE; i++) {
+  for(int i = 0; i < MEMORYSIMSIZE; i++) {
     memorySim[i] = 0xFF;
   }
 
   storfs_t fs = {
-      .read = storfs_read,
-      .write = storfs_write,
-      .erase = storfs_erase,
-      .sync = storfs_sync,
-      .memInst = NULL,
-      .firstPageLoc = 20,
-      .firstByteLoc = 0,
-      .pageSize = PAGESIZE,
-      .pageCount = 8191,
+    .read         = storfs_read,
+    .write        = storfs_write,
+    .erase        = storfs_erase,
+    .sync         = storfs_sync,
+    .memInst      = NULL,
+    .firstPageLoc = 20,
+    .firstByteLoc = 0,
+    .pageSize     = PAGESIZE,
+    .pageCount    = 8191,
   };
 
   printf("%d", STORFS_HEADER_TOTAL_SIZE);
@@ -113,9 +120,10 @@ int main(void) {
   storfs_touch(&fs, "C:/DAS.exe");
   printf("Previous File Location %ld%ld, %ld \n",
          (uint32_t)(file1.filePrevLoc.pageLoc >> 32),
-         (uint32_t)(file1.filePrevLoc.pageLoc), file1.filePrevLoc.byteLoc);
+         (uint32_t)(file1.filePrevLoc.pageLoc),
+         file1.filePrevLoc.byteLoc);
 
-  for (int i = 21; i < 30; i++) {
+  for(int i = 21; i < 30; i++) {
     location.pageLoc = i;
     storfs_display_header(&fs, location);
   }
@@ -132,9 +140,9 @@ int main(void) {
 
   // Test writing and reading large data to a file
   int charDelim = 33;
-  for (int i = 0; i < 1024; i++) {
+  for(int i = 0; i < 1024; i++) {
     loadBuffer[i] = charDelim + i;
-    if (charDelim + i > 126) {
+    if(charDelim + i > 126) {
       charDelim -= (126 - 33);
     }
   }
@@ -144,9 +152,9 @@ int main(void) {
   storfs_fgets(&fs, buffer, 1024, &file1);
   buffer[1023] = '\0';
   printf("File Read: %s \n", buffer);
-  int i = 0;
+  int i         = 0;
   int buffCount = 0;
-  while (buffer[i++] != '\0') {
+  while(buffer[i++] != '\0') {
     buffCount++;
   }
   printf("Buff count: %d \n", buffCount);
@@ -190,9 +198,9 @@ int main(void) {
   uint8_t highVolBuf[100000];
   uint8_t highVolBufRead[100000];
   charDelim = 33;
-  for (int i = 0; i < 100000; i++) {
+  for(int i = 0; i < 100000; i++) {
     loadBuffer[i] = charDelim + i;
-    if (charDelim + i > 126) {
+    if(charDelim + i > 126) {
       charDelim -= (126 - 33);
     }
   }
@@ -225,7 +233,7 @@ int main(void) {
   // Test deleting a directory
   // storfs_rm(&fs, "C:/HelloDere", NULL);
 
-  for (int i = 21; i < 30; i++) {
+  for(int i = 21; i < 30; i++) {
     location.pageLoc = i;
     storfs_display_header(&fs, location);
   }
@@ -256,7 +264,7 @@ int main(void) {
   storfs_fputs(&fs, loadBuffer, 1024, &file2);
   storfs_rm(&fs, "C:/Testing", NULL);
 
-  for (int i = 21; i < 35; i++) {
+  for(int i = 21; i < 35; i++) {
     location.pageLoc = i;
     storfs_display_header(&fs, location);
   }

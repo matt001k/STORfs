@@ -21,16 +21,16 @@
 #include <stdint.h>
 
 /** @brief Flags used for FILE struct */
-#define STORFS_FILE_WRITE_FLAG 0x00000001
-#define STORFS_FILE_READ_FLAG 0x00000002
-#define STORFS_FILE_APPEND_FLAG 0x00000004
-#define STORFS_FILE_PARENT_FLAG 0x00000008
-#define STORFS_FILE_SIBLING_FLAG 0x00000010
+#define STORFS_FILE_WRITE_FLAG        0x00000001
+#define STORFS_FILE_READ_FLAG         0x00000002
+#define STORFS_FILE_APPEND_FLAG       0x00000004
+#define STORFS_FILE_PARENT_FLAG       0x00000008
+#define STORFS_FILE_SIBLING_FLAG      0x00000010
 #define STORFS_FILE_INIT_HEADER_WRITE 0x00000020
-#define STORFS_FILE_HEADER_WRITE 0x00000040
-#define STORFS_FILE_WRITE_INIT_FLAG 0x00000080
-#define STORFS_FILE_REWIND_FLAG 0x00000100
-#define STORFS_FILE_DELETED_FLAG 0xF1
+#define STORFS_FILE_HEADER_WRITE      0x00000040
+#define STORFS_FILE_WRITE_INIT_FLAG   0x00000080
+#define STORFS_FILE_REWIND_FLAG       0x00000100
+#define STORFS_FILE_DELETED_FLAG      0xF1
 
 /** @brief Maximum file name characters for the header information
  *  cannot be less than 4 characters*/
@@ -61,13 +61,13 @@
 #define STORFS_LOGE(TAG, fmt, ...)
 #endif
 
-#define STORFS_INFO_REG_SIZE 1
+#define STORFS_INFO_REG_SIZE      1
 #define STORFS_CHILD_DIR_REG_SIZE 8
-#define STORFS_SIBLING_DIR_SIZE 8
-#define STORFS_RESERVED_SIZE 2
-#define STORFS_FRAGMENT_LOC_SIZE 8
-#define STORFS_FILE_SIZE 4
-#define STORFS_CRC_SIZE 2
+#define STORFS_SIBLING_DIR_SIZE   8
+#define STORFS_RESERVED_SIZE      2
+#define STORFS_FRAGMENT_LOC_SIZE  8
+#define STORFS_FILE_SIZE          4
+#define STORFS_CRC_SIZE           2
 #define STORFS_HEADER_TOTAL_SIZE                                               \
   (STORFS_INFO_REG_SIZE + STORFS_CHILD_DIR_REG_SIZE +                          \
    STORFS_SIBLING_DIR_SIZE + STORFS_RESERVED_SIZE + STORFS_FRAGMENT_LOC_SIZE + \
@@ -77,13 +77,13 @@
    STORFS_CRC_SIZE)
 
 /** @brief File Info Register Bit Definitions */
-#define STORFS_INFO_REG_NOT_FRAGMENT_BIT (0X1 << 7)
-#define STORFS_INFO_REG_BLOCK_SIGN_EMPTY (0X3 << 5)
-#define STORFS_INFO_REG_BLOCK_SIGN_PART_FULL (0X2 << 5)
-#define STORFS_INFO_REG_BLOCK_SIGN_FULL (0X1 << 5)
-#define STORFS_INFO_REG_FILE_TYPE_FILE (0X3 << 2)
-#define STORFS_INFO_REG_FILE_TYPE_DIRECTORY (0X2 << 2)
-#define STORFS_INFO_REG_FILE_TYPE_ROOT (0X1 << 2)
+#define STORFS_INFO_REG_NOT_FRAGMENT_BIT        (0X1 << 7)
+#define STORFS_INFO_REG_BLOCK_SIGN_EMPTY        (0X3 << 5)
+#define STORFS_INFO_REG_BLOCK_SIGN_PART_FULL    (0X2 << 5)
+#define STORFS_INFO_REG_BLOCK_SIGN_FULL         (0X1 << 5)
+#define STORFS_INFO_REG_FILE_TYPE_FILE          (0X3 << 2)
+#define STORFS_INFO_REG_FILE_TYPE_DIRECTORY     (0X2 << 2)
+#define STORFS_INFO_REG_FILE_TYPE_ROOT          (0X1 << 2)
 #define STORFS_INFO_REG_FILE_TYPE_FILE_FRAGMENT (0X0 << 2)
 
 /** @brief Alias for size in bytes of items */
@@ -115,46 +115,46 @@ typedef enum {
 
   // File/Directory errors
   STORFS_ERR_NOT_FOUND = 1,
-  STORFS_ERR_EXISTS = 2,
-  STORFS_ERR_IS_DIR = 3,
-  STORFS_ERR_IS_FILE = 4,
+  STORFS_ERR_EXISTS    = 2,
+  STORFS_ERR_IS_DIR    = 3,
+  STORFS_ERR_IS_FILE   = 4,
   STORFS_ERR_NOT_EMPTY = 5,
 
   // Space/Resource errors
-  STORFS_ERR_NO_SPACE = 10,
-  STORFS_ERR_NO_FREE_BLOCKS = 11,
+  STORFS_ERR_NO_SPACE            = 10,
+  STORFS_ERR_NO_FREE_BLOCKS      = 11,
   STORFS_ERR_TOO_MANY_OPEN_FILES = 12,
 
   // I/O errors
-  STORFS_ERR_IO = 20,
-  STORFS_ERR_READ_FAILED = 21,
-  STORFS_ERR_WRITE_FAILED = 22,
-  STORFS_ERR_ERASE_FAILED = 23,
+  STORFS_ERR_IO            = 20,
+  STORFS_ERR_READ_FAILED   = 21,
+  STORFS_ERR_WRITE_FAILED  = 22,
+  STORFS_ERR_ERASE_FAILED  = 23,
   STORFS_ERR_VERIFY_FAILED = 24,
 
   // Data integrity errors
-  STORFS_ERR_CORRUPT = 30,
-  STORFS_ERR_CRC_MISMATCH = 31,
-  STORFS_ERR_BAD_BLOCK = 32,
+  STORFS_ERR_CORRUPT        = 30,
+  STORFS_ERR_CRC_MISMATCH   = 31,
+  STORFS_ERR_BAD_BLOCK      = 32,
   STORFS_ERR_HEADER_CORRUPT = 33,
 
   // Parameter errors
   STORFS_ERR_INVALID_PARAM = 40,
-  STORFS_ERR_INVALID_PATH = 41,
+  STORFS_ERR_INVALID_PATH  = 41,
   STORFS_ERR_PATH_TOO_LONG = 42,
   STORFS_ERR_NAME_TOO_LONG = 43,
-  STORFS_ERR_INVALID_MODE = 44,
-  STORFS_ERR_NULL_POINTER = 45,
+  STORFS_ERR_INVALID_MODE  = 44,
+  STORFS_ERR_NULL_POINTER  = 45,
 
   // State errors
-  STORFS_ERR_NOT_MOUNTED = 50,
-  STORFS_ERR_ALREADY_MOUNTED = 51,
-  STORFS_ERR_FILE_NOT_OPEN = 52,
+  STORFS_ERR_NOT_MOUNTED       = 50,
+  STORFS_ERR_ALREADY_MOUNTED   = 51,
+  STORFS_ERR_FILE_NOT_OPEN     = 52,
   STORFS_ERR_FILE_ALREADY_OPEN = 53,
 
   // Hardware errors
-  STORFS_ERR_NO_SYNC = 60,
-  STORFS_ERR_TIMEOUT = 61,
+  STORFS_ERR_NO_SYNC      = 60,
+  STORFS_ERR_TIMEOUT      = 61,
   STORFS_ERR_DEVICE_ERROR = 62
 } storfs_err_t;
 
@@ -167,21 +167,21 @@ typedef struct {
 
 /** @brief File header information struct */
 typedef struct {
-  storfs_name_t fileName[STORFS_MAX_FILE_NAME];
+  storfs_name_t      fileName[STORFS_MAX_FILE_NAME];
   storfs_file_info_t fileInfo;
-  storfs_page_t childLocation;
-  storfs_page_t siblingLocation;
-  uint16_t reserved;
-  storfs_page_t fragmentLocation;
+  storfs_page_t      childLocation;
+  storfs_page_t      siblingLocation;
+  uint16_t           reserved;
+  storfs_page_t      fragmentLocation;
   storfs_file_size_t fileSize;
-  storfs_crc_t crc;
+  storfs_crc_t       crc;
 } storfs_file_header_t;
 
 /** @brief "Cache" for items in the current filesystem instance */
 typedef struct {
   storfs_file_header_t rootHeaderInfo[2];
-  storfs_page_t nextOpenByte;
-  storfs_loc_t rootLocation[2];
+  storfs_page_t        nextOpenByte;
+  storfs_loc_t         rootLocation[2];
 } storfs_cached_info_t;
 
 /** @brief Filesystem Configuration */
@@ -203,8 +203,11 @@ typedef struct storfs {
    * @param       size        Total size of the data to be read
    * @return      STORFS_OK   Succeed
    */
-  storfs_err_t (*read)(const struct storfs *storfsInst, storfs_page_t page,
-                       storfs_byte_t byte, uint8_t *buffer, storfs_size_t size);
+  storfs_err_t (*read)(const struct storfs *storfsInst,
+                       storfs_page_t        page,
+                       storfs_byte_t        byte,
+                       uint8_t             *buffer,
+                       storfs_size_t        size);
 
   /**
    * @brief       Write Callback
@@ -220,9 +223,11 @@ typedef struct storfs {
    * @param       size        Size of the data to be sent
    * @return      STORFS_OK   Succeed
    */
-  storfs_err_t (*write)(const struct storfs *storfsInst, storfs_page_t page,
-                        storfs_byte_t byte, uint8_t *buffer,
-                        storfs_size_t size);
+  storfs_err_t (*write)(const struct storfs *storfsInst,
+                        storfs_page_t        page,
+                        storfs_byte_t        byte,
+                        uint8_t             *buffer,
+                        storfs_size_t        size);
 
   /**
    * @brief       Erase Callback
@@ -255,8 +260,9 @@ typedef struct storfs {
    * @param       size        Length in bytes of the buffer to compute the crc
    * @return      STORFS_OK   Succeed
    */
-  storfs_err_t (*crc)(const struct storfs *storfsInst, const uint8_t *buffer,
-                      storfs_size_t size);
+  storfs_err_t (*crc)(const struct storfs *storfsInst,
+                      const uint8_t       *buffer,
+                      storfs_size_t        size);
 #endif
 
 #ifdef STORFS_THREADSAFE
@@ -330,7 +336,7 @@ storfs_err_t storfs_touch(storfs_t *storfsInst, char *pathToFile);
 /** @brief Flags when opening up a file */
 typedef struct {
   storfs_loc_t readLocPtr;
-  int32_t fileSizeRem;
+  int32_t      fileSizeRem;
 } storfs_read_t;
 
 /** @brief Flags when opening up a file */
@@ -339,11 +345,11 @@ typedef uint32_t storfs_file_flags_t;
 /** @brief FILE struct for saving data to when opening up a file */
 typedef struct storfs_fopen_file_info {
   storfs_file_header_t fileInfo;
-  storfs_loc_t fileLoc;
-  storfs_file_flags_t fileFlags;
-  storfs_loc_t filePrevLoc;
-  storfs_file_flags_t filePrevFlags;
-  storfs_read_t fileRead;
+  storfs_loc_t         fileLoc;
+  storfs_file_flags_t  fileFlags;
+  storfs_loc_t         filePrevLoc;
+  storfs_file_flags_t  filePrevFlags;
+  storfs_read_t        fileRead;
 } STORFS_FILE;
 
 /**
@@ -367,8 +373,10 @@ typedef struct storfs_fopen_file_info {
  * @param       stream      File to save the file information from the function
  * @return      STORFS_OK   Succeed
  */
-storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile,
-                          const char *mode, STORFS_FILE *stream);
+storfs_err_t storfs_fopen(storfs_t    *storfsInst,
+                          char        *pathToFile,
+                          const char  *mode,
+                          STORFS_FILE *stream);
 
 /**
  * @brief       fputs
@@ -380,8 +388,10 @@ storfs_err_t storfs_fopen(storfs_t *storfsInst, char *pathToFile,
  * @param       stream      File to write to
  * @return      STORFS_OK   Succeed
  */
-storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str,
-                          const storfs_size_t n, STORFS_FILE *stream);
+storfs_err_t storfs_fputs(storfs_t           *storfsInst,
+                          const char         *str,
+                          const storfs_size_t n,
+                          STORFS_FILE        *stream);
 
 /**
  * @brief       fgets
@@ -393,8 +403,8 @@ storfs_err_t storfs_fputs(storfs_t *storfsInst, const char *str,
  * @param       stream      File to read from
  * @return      STORFS_OK   Succeed
  */
-storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n,
-                          STORFS_FILE *stream);
+storfs_err_t
+storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *stream);
 
 /**
  * @brief       rm
@@ -408,8 +418,8 @@ storfs_err_t storfs_fgets(storfs_t *storfsInst, char *str, int n,
  * @param       stream      File to delete
  * @return      STORFS_OK   Succeed
  */
-storfs_err_t storfs_rm(storfs_t *storfsInst, char *pathToFile,
-                       STORFS_FILE *stream);
+storfs_err_t
+storfs_rm(storfs_t *storfsInst, char *pathToFile, STORFS_FILE *stream);
 
 /**
  * @brief       rewind
