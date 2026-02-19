@@ -1,16 +1,9 @@
 #include "unity.h"
-#include "hash.h"
-#include <stdlib.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
-void setUp(void)
-{
-}
+void setUp(void) {}
 
-void tearDown(void)
-{
-}
+void tearDown(void) {}
 
-void test_hash_create(void) {
-    TEST_ASSERT(true);
-}
+void test_hash_create(void) { TEST_ASSERT(true); }
