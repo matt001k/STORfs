@@ -57,7 +57,7 @@ void test_snode_create(void) {
     storfs_page_t read_page;
     TEST_ASSERT_EQUAL(snode_create(fs, name, &read_page), STORFS_OK);
     TEST_ASSERT_EQUAL(read_page, page);
-    bitmap_free(fs, read_page);
+    bitmap_alloc_page(fs, read_page, PAGE_FREE);
   }
 
   // Test creating a node out of bounds

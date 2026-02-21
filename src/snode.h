@@ -28,15 +28,14 @@ typedef struct {
 } SNodeExtent;
 
 typedef struct {
-  uint64_t      modified_time;
-  storfs_page_t parent;
-  storfs_page_t page;
-  SNodeExtent   direct[DIRECT_EXTENT_SIZE];
+  uint64_t    modified_time;
+  uint64_t    size;
+  uint32_t    extent_idx;
+  SNodeExtent direct[DIRECT_EXTENT_SIZE];
   struct {
     storfs_page_t single;
     storfs_page_t multiple;
   } indirect;
-  uint32_t size;
   uint16_t crc;
   uint8_t  type;
   uint8_t  flags;
