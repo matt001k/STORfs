@@ -3,6 +3,7 @@
 
 #include "storfs.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define SNODE_TOTAL_SIZE 128
@@ -28,10 +29,10 @@ typedef struct {
 } SNodeExtent;
 
 typedef struct {
-  uint64_t    modified_time;
-  uint64_t    size;
-  uint32_t    extent_idx;
-  SNodeExtent direct[DIRECT_EXTENT_SIZE];
+  uint64_t      modified_time;
+  uint64_t      size;
+  storfs_page_t extent_idx;
+  SNodeExtent   direct[DIRECT_EXTENT_SIZE];
   struct {
     storfs_page_t single;
     storfs_page_t multiple;
@@ -43,18 +44,30 @@ typedef struct {
   uint8_t  name[STORFS_MAX_FILE_NAME];
 } SNode;
 
+typedef struct {
+  uint32_t offset_bytes;
+  uint32_t idx;
+} SNodeExtentCache;
+
+typedef struct {
+  SNode            node;
+  storfs_page_t    page;
+  SNodeExtentCache read;
+  SNodeExtentCache write;
+} SNodeInst;
+
 _Static_assert(sizeof(SNode) == SNODE_TOTAL_SIZE,
                "Snode structure is not equivalent to expected size");
 
 storfs_err_t snode_create(storfs_t *fs, const char *name, storfs_page_t *page);
-storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNode *node);
+storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNode *inst);
+storfs_err_t
+snode_find_read_location(storfs_t *fs, SNodeInst *inst, storfs_byte_t offset);
+storfs_err_t snode_find_write_location(storfs_t *fs, SNodeInst *inst);
 storfs_err_t snode_write_data(storfs_t      *fs,
-                              storfs_page_t  page,
+                              SNodeInst     *inst,
                               const uint8_t *data,
                               uint32_t       size);
-storfs_err_t snode_read_data(storfs_t     *fs,
-                             storfs_page_t page,
-                             storfs_byte_t offset,
-                             uint8_t      *data,
-                             uint32_t      size);
+storfs_err_t
+snode_read_data(storfs_t *fs, SNodeInst *inst, uint8_t *data, uint32_t size);
 #endif

@@ -12,3 +12,16 @@ storfs_err_t atomic_write(storfs_t *fs, storfs_page_t page) {
 
   return STORFS_OK;
 }
+
+storfs_err_t atomic_read(storfs_t *fs, storfs_page_t page) {
+  if(page >= fs->pageCount) {
+    return STORFS_ERR_INVALID_PARAM;
+  }
+
+  storfs_err_t err = fs->read(fs, page, 0, fs->working_buf, fs->pageSize);
+  if(err != STORFS_OK) {
+    return STORFS_ERR_READ_FAILED;
+  }
+
+  return STORFS_OK;
+}
