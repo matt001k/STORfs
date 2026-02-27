@@ -7,6 +7,7 @@
 #include "snode.h"
 #include "unity.h"
 
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,22 +83,27 @@ void test_snode_create(void) {
 }
 
 void test_snode_write(void) {
-  const uint32_t buf_size                   = MULTIPLE_INDIRECT_DATA_SIZE(fs);
-  uint8_t       *write_buf                  = random_array(buf_size);
+  const uint32_t buf_size  = MULTIPLE_INDIRECT_DATA_SIZE(fs);
+  uint8_t       *write_buf = random_array(buf_size);
+  uint8_t       *read_buf  = (uint8_t *)calloc(buf_size, sizeof(uint8_t));
   char           name[STORFS_MAX_FILE_NAME] = FAKE_NAME "123";
   storfs_page_t  page                       = 17;
   storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
 
+  SNodeInst inst = { 0 };
   TEST_ASSERT_EQUAL(snode_create(fs, name, &page), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_lookup(fs, page, &inst), STORFS_OK);
 
   // Write all the data from the file, read it and compare
-  SNodeInst inst = { 0 };
-  snode_lookup(fs, page, &inst.node);
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, 0), STORFS_OK);
+
   TEST_ASSERT_EQUAL(snode_write_data(fs, &inst, write_buf, buf_size),
                     STORFS_OK);
-  // TEST_ASSERT_EQUAL(snode_read_data(fs, page, 0, read_buf, buf_size),
-  //                   STORFS_OK);
-  // TEST_ASSERT_EQUAL(memcmp(write_buf, read_buf, buf_size), 0);
+  TEST_ASSERT_EQUAL(snode_read_data(fs, &inst, read_buf, buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(memcmp(write_buf, read_buf, buf_size), 0);
+  free(write_buf);
+  free(read_buf);
 }
 
 // void test_snode_write_read(void) {

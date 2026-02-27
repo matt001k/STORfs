@@ -75,12 +75,13 @@ storfs_err_t snode_create(storfs_t *fs, const char *name, storfs_page_t *page) {
   return bitmap_alloc_page(fs, *page, PAGE_ALLOC);
 }
 
-storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNode *node) {
-  if(!fs || !node) {
+storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNodeInst *inst) {
+  if(!fs || !inst) {
     return STORFS_ERR_NULL_POINTER;
   }
 
-  storfs_err_t err = atomic_read(fs, page);
+  SNode       *node = &inst->node;
+  storfs_err_t err  = atomic_read(fs, page);
   if(err != STORFS_OK) {
     return err;
   }
@@ -93,6 +94,8 @@ storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNode *node) {
   if(crc != node->crc) {
     return STORFS_ERR_CRC_MISMATCH;
   }
+
+  inst->page = page;
 
   return STORFS_OK;
 }
@@ -300,7 +303,7 @@ static storfs_err_t snode_read_maybe_alloc_extent_page(storfs_t    *fs,
   return err;
 }
 
-storfs_err_t snode_op(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
+static storfs_err_t snode_op(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
   SNodeExtentCache extent_cache;
   SNode           *node   = &inst->node;
   SNodeExtent     *extent = &op->extent;
@@ -444,6 +447,10 @@ static storfs_err_t snode_read_or_write_data(storfs_t    *fs,
                                              SNodeOpInst *op,
                                              uint8_t     *data,
                                              uint32_t     size) {
+  if(!fs || !inst || !data) {
+    return STORFS_ERR_NULL_POINTER;
+  }
+
   storfs_err_t      err   = STORFS_OK;
   SNodeExtentCache *cache = &inst->read;
 
@@ -474,11 +481,22 @@ static storfs_err_t snode_read_or_write_data(storfs_t    *fs,
       write_size              = MIN(op->bytes_remaining, page_size_left);
       uint32_t data_offset    = size - op->bytes_remaining;
 
-      memcpy(&fs->working_buf[location.byteLoc],
-             &data[data_offset],
-             write_size);
+      switch(op->op) {
+        case SNODE_WRITE:
+          memcpy(&fs->working_buf[location.byteLoc],
+                 &data[data_offset],
+                 write_size);
 
-      err = atomic_write(fs, location.pageLoc);
+          err = atomic_write(fs, location.pageLoc);
+          break;
+        case SNODE_READ:
+          memcpy(&data[data_offset],
+                 &fs->working_buf[location.byteLoc],
+                 write_size);
+          err = atomic_read(fs, location.pageLoc + 1);
+        case SNODE_ERASE:
+          break;
+      }
       if(err != STORFS_OK) {
         break;
       }
@@ -521,11 +539,17 @@ storfs_err_t snode_write_data(storfs_t      *fs,
                               SNodeInst     *inst,
                               const uint8_t *data,
                               uint32_t       size) {
-  if(!fs || !inst || !data) {
-    return STORFS_ERR_NULL_POINTER;
-  }
   storfs_err_t err = STORFS_OK;
   SNodeOpInst  op  = { .op = SNODE_WRITE, .bytes_remaining = size };
+
+  return snode_read_or_write_data(fs, inst, &op, (uint8_t *)data, size);
+}
+
+storfs_err_t
+snode_read_data(storfs_t *fs, SNodeInst *inst, uint8_t *data, uint32_t size) {
+
+  storfs_err_t err = STORFS_OK;
+  SNodeOpInst  op  = { .op = SNODE_READ, .bytes_remaining = size };
 
   return snode_read_or_write_data(fs, inst, &op, (uint8_t *)data, size);
 }

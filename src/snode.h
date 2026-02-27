@@ -60,7 +60,7 @@ _Static_assert(sizeof(SNode) == SNODE_TOTAL_SIZE,
                "Snode structure is not equivalent to expected size");
 
 storfs_err_t snode_create(storfs_t *fs, const char *name, storfs_page_t *page);
-storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNode *inst);
+storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNodeInst *inst);
 storfs_err_t
 snode_find_read_location(storfs_t *fs, SNodeInst *inst, storfs_byte_t offset);
 storfs_err_t snode_find_write_location(storfs_t *fs, SNodeInst *inst);
