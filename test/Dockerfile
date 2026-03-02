@@ -1,4 +1,4 @@
-from ubuntu:24.04
+FROM ubuntu:24.04
 
 VOLUME ["/storfs"]
 WORKDIR /storfs
