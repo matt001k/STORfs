@@ -248,16 +248,16 @@ static storfs_err_t find_next_available_page(storfs_t      *fs,
 
   if(should_allocate) {
     // Allocate via get_set_contiguous_pages with max=1
-    BitmapContiguousInfo alloc_info = {                                                                                                                                                                                                                                  
-      .request = {                                                                                                                                                                                                                                                       
-        .page = fs->bitmap.hint,                                                                                                                                                                                                                                               
-        .max = 1,                                                                                                                                                                                                                                                        
-        .action = ALLOC,                                                                                                                                                                                                                                                 
-      },                                                                                                                                                                                                                                                                 
-      .tracking = {                                                                                                                                                                                                                                                      
-        .count = 0,                                                                                                                                                                                                                                                      
-        .modified = false,                                                                                                                                                                                                                                               
-      },                                                                                                                                                                                                                                                                 
+    BitmapContiguousInfo alloc_info = {
+      .request = {
+        .page = fs->bitmap.hint,
+        .max = 1,
+        .action = ALLOC,
+      },
+      .tracking = {
+        .count = 0,
+        .modified = false,
+      },
     };
     err = get_set_contiguous_pages(fs, &alloc_info);
   }

@@ -80,16 +80,16 @@ static storfs_err_t storfs_sync(const storfs_t *fs) {
 storfs_t *fake_storfs_init(void) {
   static uint8_t  buf[PAGE_SIZE] = { 0 };
   static storfs_t fs             = {
-                .read         = storfs_read,
-                .write        = storfs_write,
-                .erase        = storfs_erase,
-                .sync         = storfs_sync,
-                .memInst      = NULL,
-                .firstPageLoc = 0,
-                .firstByteLoc = 0,
-                .pageSize     = PAGE_SIZE,
-                .pageCount    = MEMORY_SIZE / PAGE_SIZE,
-                .working_buf  = buf,
+    .read         = storfs_read,
+    .write        = storfs_write,
+    .erase        = storfs_erase,
+    .sync         = storfs_sync,
+    .memInst      = NULL,
+    .firstPageLoc = 0,
+    .firstByteLoc = 0,
+    .pageSize     = PAGE_SIZE,
+    .pageCount    = MEMORY_SIZE / PAGE_SIZE,
+    .working_buf  = buf,
   };
 
   memset(buf, 0, sizeof(buf));

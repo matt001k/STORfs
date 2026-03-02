@@ -50,7 +50,7 @@ storfs_fgets(storfs_t *storfsInst, char *str, int n, STORFS_FILE *stream) {
   } else {
     recvDataItr = (stream->fileRead.fileSizeRem + storfsInst->pageSize) /
                   storfsInst->pageSize;
-    count = stream->fileRead.fileSizeRem;
+    count       = stream->fileRead.fileSizeRem;
   }
 
   // If the count is zero, the file has been completely read, warn the user
