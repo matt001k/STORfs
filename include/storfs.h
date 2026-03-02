@@ -87,10 +87,10 @@
 #define STORFS_INFO_REG_FILE_TYPE_FILE_FRAGMENT (0X0 << 2)
 
 /** @brief Alias for size in bytes of items */
-typedef uint64_t storfs_size_t;
+typedef uint32_t storfs_size_t;
 
 /** @brief Describes the page location */
-typedef uint64_t storfs_page_t;
+typedef uint32_t storfs_page_t;
 
 /** @brief Describes the byte location */
 typedef uint32_t storfs_byte_t;
@@ -176,6 +176,11 @@ typedef struct {
   storfs_file_size_t fileSize;
   storfs_crc_t       crc;
 } storfs_file_header_t;
+
+typedef struct {
+  storfs_page_t page_count;
+  uint32_t      hint;
+} Bitmap;
 
 /** @brief "Cache" for items in the current filesystem instance */
 typedef struct {
@@ -288,6 +293,12 @@ typedef struct storfs {
   /** @brief Information cached for use throughout the instance */
   storfs_cached_info_t cachedInfo;
 
+  /** @brief Cached information pertaining to the bitmap */
+  Bitmap bitmap;
+
+  /** @bried Working buffer, must be the same size as pageSize,
+   * used to access/mutate pages */
+  uint8_t *working_buf;
 } storfs_t;
 
 /**

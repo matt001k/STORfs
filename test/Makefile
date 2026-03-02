@@ -9,5 +9,5 @@ all: test
 init:
 	@docker build -t storfs .
 
-test: init
-	@docker run --rm -i -v "./../":"/storfs" storfs -t $(Arguments)
+test:
+	@docker run --rm -i -v "$(CURDIR)/../":"$(CURDIR)/../" -w "$(CURDIR)/../" storfs -t $(Arguments)

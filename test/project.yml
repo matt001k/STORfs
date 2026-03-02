@@ -60,7 +60,7 @@
     - gcov                           # test coverage using gcov. Requires gcc, gcov, and a coverage analyzer like gcovr
     #- bullseye                       # test coverage using bullseye. Requires bullseye for your platform
     #- command_hooks                  # write custom actions to be called at different points during the build process
-    #- compile_commands_json_db       # generate a compile_commands.json file
+    - compile_commands_json_db       # generate a compile_commands.json file
     #- dependencies                   # automatically fetch 3rd party libraries, etc.
     #- subprojects                    # managing builds and test for static libraries
     #- fake_function_framework        # use FFF instead of CMock
@@ -107,8 +107,7 @@
     - ..
     - .
   :libraries: []
-  :support:
-    - .
+  :support: []
 
 # You can even specify specific files to add or remove from your test
 # and release collections. Usually it's better to use paths and let
@@ -116,6 +115,11 @@
 :files:
   :test: []
   :source: []
+  :support:
+    - ./fake_*.c
+    - ./helper_*.c
+  :auxiliary_source:
+    - ../src/crc.c
 
 # Compilation symbols to be injected into builds
 # See documentation for advanced options:
@@ -237,8 +241,10 @@
   :flag: "-l${1}"
   :path_flag: "-L ${1}"
   :system: []    # for example, you might list 'm' to grab the math library
-  :test: []
-  :release: []
+  :test:
+    - m
+  :release:
+    - m
 
 ################################################################
 # PLUGIN CONFIGURATION
@@ -280,7 +286,11 @@
     :html_title: STORfs
     :html_medium_threshold: 75
     :html_high_threshold: 90
-    :report_exclude: "^src|^test|^build"
+    :report_exclude: "^test|^build"
+    :report_root: ".."
+    :gcovr_additional_args:
+      - "--exclude-unreachable-branches"
+      - "--exclude-throw-branches"
     # :html_absolute_paths: TRUE
     # :html_encoding: UTF-8
 
