@@ -29,14 +29,22 @@ This document provides guidelines and instructions for contributing.
 
 1. Fork and clone the repository.
 2. The following tools are needed to contribute:
-  - [Docker](https://www.docker.com/), for local testing only
+  - [Docker](https://www.docker.com/) or [Nix](https://github.com/NixOS/nix) (for local testing only)
   - [ClangFormat](https://clang.llvm.org/docs/ClangFormat.html)
     - Most Linux distributions offer this as a standalone package
   - [Make](https://www.gnu.org/software/make/)
+
+If you're on nix, you can simply run `nix develop` and it will install everything you need.
+
 3. Build and run unit test:
    ```bash
+   # with docker
    cd test
    make
+
+   # with nix
+   nix develop
+   ./test/run.sh -t
    ```
    The unit tests are built around [ceedling](https://www.throwtheswitch.org/ceedling)'s test framework.
 

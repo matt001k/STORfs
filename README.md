@@ -382,9 +382,16 @@ a unit testing framework targeted toward `C` projects.
 In order to run the unit tests the following tools are needed:
 
 - [GNU Make](https://www.gnu.org/software/make/)
-- [Docker](https://https://www.docker.com/)
 
-In order to run the unit tests:
+- [Docker](https://www.docker.com/) or [Nix](https://github.com/NixOS/nix)
+
+In order to run the unit tests with docker:
 
 - `cd` into the `test` directory
 - run `make`
+
+
+In order to run the unit tests with nix:
+
+- `nix develop` at the root of the directory
+- run `./test/run.sh -t`
