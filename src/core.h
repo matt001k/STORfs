@@ -3,11 +3,6 @@
 
 #include "storfs.h"
 
-#define ARRAY_SIZE(x)        (sizeof(x) / sizeof((x)[0]))
-#define DIV_BY_8(val)        (val >> 3)
-#define MULT_BY_8(val)       (val << 3)
-#define CEIL_DIV(num, denom) ((num + denom - 1) / denom)
-
 #define LOCATION_TO_PAGE(location, storfsInst) (location / storfsInst->pageSize)
 #define LOCATION_TO_BYTE(location, storfsInst)                                 \
   ((location + storfsInst->pageSize) % storfsInst->pageSize)

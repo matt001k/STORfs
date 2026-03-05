@@ -1,6 +1,7 @@
 #include "bitmap.h"
 
 #include "atomic.h"
+#include "common.h"
 #include "core.h"
 
 #include <stdbool.h>

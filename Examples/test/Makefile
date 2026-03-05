@@ -5,6 +5,7 @@ CFLAGS ?= -g -Wall -Wno-format
 # C Sources
 C_SOURCES = \
 main.c \
+../../src/common.c \
 ../../src/core.c \
 ../../src/crc.c \
 ../../src/wear.c \
