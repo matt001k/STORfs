@@ -1,5 +1,6 @@
 #include "atomic.h"
 #include "bitmap.h"
+#include "common.h"
 #include "fake_flash.h"
 #include "unity.h"
 
