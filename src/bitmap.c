@@ -366,7 +366,7 @@ storfs_err_t bitmap_create(storfs_t *fs) {
 
   for(uint32_t i = 0; i < fs->pageCount; i++) {
     uint32_t byte_index = DIV_BY_8(i) % fs->pageSize;
-    uint32_t bit_index  = i % 8;
+    uint32_t bit_index  = get_bit_offset(i);
 
     // Protected pages are the root page and bitmap pages
     if(i < STORFS_PROTECTED_PAGES(fs)) {
