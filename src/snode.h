@@ -70,4 +70,5 @@ storfs_err_t snode_write_data(storfs_t      *fs,
                               uint32_t       size);
 storfs_err_t
 snode_read_data(storfs_t *fs, SNodeInst *inst, uint8_t *data, uint32_t size);
+storfs_err_t snode_erase_data(storfs_t *fs, SNodeInst *inst, uint32_t size);
 #endif
