@@ -169,6 +169,15 @@ find_double_indirect_location(storfs_t         *fs,
   return err;
 }
 
+static void
+find_update_cache(storfs_t *fs, SNodeExtentCache *cache, storfs_loc_t logical) {
+  // logical.pageLoc is decremented throughout these operations if non zero,
+  // this will be the total offset in bytes from the extent start location
+  cache->offset_bytes = logical.pageLoc * fs->pageSize + logical.byteLoc;
+  // Increment here as index 0 is the inline data
+  cache->idx++;
+}
+
 static storfs_err_t find_location(storfs_t         *fs,
                                   SNodeInst        *inst,
                                   SNodeExtentCache *cache,
@@ -195,18 +204,21 @@ static storfs_err_t find_location(storfs_t         *fs,
                              extent_count,
                              &logical.pageLoc);
   if(err == STORFS_OK) {
-    goto finish;
+    find_update_cache(fs, cache, logical);
+    return STORFS_OK;
   }
 
   if(!inst->node.indirect.single) {
-    goto finish;
+    find_update_cache(fs, cache, logical);
+    return STORFS_ERR_NOT_FOUND;
   }
   err = find_extent_in_indirect_page(fs,
                                      cache,
                                      inst->node.indirect.single,
                                      &logical.pageLoc);
   if(err == STORFS_OK) {
-    goto finish;
+    find_update_cache(fs, cache, logical);
+    return STORFS_OK;
   } else if(err != STORFS_ERR_NOT_FOUND) {
     return err;
   }
@@ -216,13 +228,7 @@ static storfs_err_t find_location(storfs_t         *fs,
     return err;
   }
 
-finish:
-  // logical.pageLoc is decremented throughout these operations if non zero,
-  // this will be the total offset in bytes from the extent start location
-  cache->offset_bytes = logical.pageLoc * fs->pageSize + logical.byteLoc;
-  // Increment here as index 0 is the inline data
-  cache->idx++;
-
+  find_update_cache(fs, cache, logical);
   return err;
 }
 
@@ -254,7 +260,7 @@ snode_alloc_indirect_page(storfs_t *fs, SNodeInst *inst, storfs_page_t *page) {
 static inline storfs_page_t calculate_freed(const storfs_t    *fs,
                                             const SNodeExtent *extent,
                                             const SNodeOpInst *op) {
-  storfs_page_t pages_remaining = CEIL_DIV(op->bytes_remaining, fs->pageSize);
+  storfs_page_t pages_remaining = op->bytes_remaining / fs->pageSize;
   storfs_page_t freed =
       pages_remaining > extent->count ? extent->count : pages_remaining;
   return freed;
@@ -365,20 +371,12 @@ static storfs_err_t snode_op(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
 
       direct_extent->start = extent->start;
       direct_extent->count = extent->count;
-
-      err = snode_update(fs, node, inst->page);
-      if(err != STORFS_OK) {
-        return err;
-      }
     } else if(op->op == SNODE_ERASE) {
       erase_decrement_extent(fs, direct_extent, op);
     }
 
     if(op->op != SNODE_READ) {
       err = snode_update(fs, node, inst->page);
-    }
-    if(err != STORFS_OK) {
-      return err;
     }
   } else if(extent_cache.idx < si_size) {
     uint32_t single_indirect_extent_idx = extent_cache.idx - DIRECT_EXTENT_SIZE;
@@ -466,7 +464,7 @@ static storfs_err_t snode_op(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
       if(op->op == SNODE_WRITE) {
         multiple_extent->count += op->extent.count;
       } else {
-        multiple_extent->count -= op->extent.count;
+        multiple_extent->count -= calculate_freed(fs, &op->extent, op);
         if(!multiple_extent->count) {
           multiple_extent->start = 0;
         }
@@ -487,7 +485,6 @@ static storfs_err_t snode_op(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
         node->indirect.multiple = 0;
       }
     }
-
   } else {
     return STORFS_ERR_NO_FREE_BLOCKS;
   }
@@ -586,41 +583,45 @@ static storfs_err_t snode_perform_op(storfs_t    *fs,
     if(op->op != SNODE_ERASE) {
       err = snode_read_or_write_data(fs, op, data, size, cache);
     } else {
-      storfs_page_t freed       = calculate_freed(fs, &op->extent, op);
-      uint32_t contiguous_start = op->extent.start + op->extent.count - freed;
-      uint32_t contiguous_pages = freed;
-      storfs_page_t pages_remaining =
-          CEIL_DIV(op->bytes_remaining, fs->pageSize);
-      uint32_t page_bytes_offset = op->bytes_remaining % fs->pageSize;
+      storfs_page_t freed        = calculate_freed(fs, &op->extent, op);
+      uint32_t      page_start   = op->extent.start + op->extent.count - freed;
+      uint32_t      pages_erased = freed;
+      uint32_t      page_bytes_offset = op->bytes_remaining % fs->pageSize;
 
-      if(pages_remaining <= contiguous_pages && page_bytes_offset) {
-        err = atomic_read(fs, contiguous_start);
+      if(pages_erased) {
+        err =
+            bitmap_free_contiguous(fs, page_start, &pages_erased, pages_erased);
+      }
+
+      uint32_t bytes_erased = pages_erased * fs->pageSize;
+      op->bytes_remaining -= bytes_erased;
+
+      // Is there a partial erase needed for this extent?
+      if(err == STORFS_OK && op->bytes_remaining < fs->pageSize &&
+         pages_erased < op->extent.count) {
+        // Erase page previous to the contiguous start location
+        page_start--;
+        err = atomic_read(fs, page_start);
         if(err != STORFS_OK) {
-          return err;
+          break;
         }
 
         uint32_t write_size = fs->pageSize - page_bytes_offset;
         memset(&fs->working_buf[page_bytes_offset], 0, write_size);
-        err = atomic_write(fs, contiguous_start);
+        err = atomic_write(fs, page_start);
         if(err != STORFS_OK) {
-          return err;
+          break;
         }
-        contiguous_start++;
-        contiguous_pages--;
+        bytes_erased += op->bytes_remaining;
+        op->bytes_remaining = 0;
       }
 
-      if(contiguous_pages) {
-        err = bitmap_free_contiguous(fs,
-                                     contiguous_start,
-                                     &contiguous_pages,
-                                     contiguous_pages);
+      if(err != STORFS_OK || !op->bytes_remaining) {
+        cache->offset_bytes = op->extent.count * fs->pageSize - bytes_erased;
+      } else {
+        cache->idx          = cache->idx ? cache->idx - 1 : 0;
+        cache->offset_bytes = 0;
       }
-
-      cache->idx          = cache->idx ? cache->idx - 1 : 0;
-      cache->offset_bytes = 0;
-      uint32_t bytes_erased =
-          contiguous_pages * fs->pageSize + page_bytes_offset;
-      op->bytes_remaining -= bytes_erased;
     }
   }
 
