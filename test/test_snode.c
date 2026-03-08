@@ -189,10 +189,10 @@ void test_snode_write_read_alternate(void) {
   TEST_ASSERT_EQUAL(inst_1.node.size, buf_size);
   TEST_ASSERT_EQUAL(inst_2.node.size, buf_size);
 
-  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst_1, 1), STORFS_OK);
-  // TEST_ASSERT_EQUAL(inst_1.node.size, 0);
-  //  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst_2, buf_size), STORFS_OK);
-  //  TEST_ASSERT_EQUAL(inst_2.node.size, 0);
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst_1, buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(inst_1.node.size, 0);
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst_2, buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(inst_2.node.size, 0);
 
   random_array_free(write_buf);
   free(read_buf);
