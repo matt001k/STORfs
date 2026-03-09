@@ -56,7 +56,8 @@ void test_snode_create(void) {
     snprintf(name, STORFS_MAX_FILE_NAME, FAKE_NAME "%lu", i);
 
     storfs_page_t read_page;
-    TEST_ASSERT_EQUAL(snode_create(fs, name, &read_page), STORFS_OK);
+    TEST_ASSERT_EQUAL(snode_create(fs, name, &read_page, SNODE_TYPE_FILE),
+                      STORFS_OK);
     TEST_ASSERT_EQUAL(read_page, page);
     bitmap_alloc_page(fs, read_page, PAGE_FREE);
   }
@@ -67,16 +68,23 @@ void test_snode_create(void) {
 
   // Test read failure
   fake_storfs_fail_op(READ, true, 1);
-  TEST_ASSERT_EQUAL(snode_create(fs, name, &page), STORFS_ERR_READ_FAILED);
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE),
+                    STORFS_ERR_READ_FAILED);
   fake_storfs_fail_op(READ, false, 0);
 
   // Test write failure
   fake_storfs_fail_op(WRITE, true, 1);
-  TEST_ASSERT_EQUAL(snode_create(fs, name, &page), STORFS_ERR_WRITE_FAILED);
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE),
+                    STORFS_ERR_WRITE_FAILED);
   fake_storfs_fail_op(WRITE, false, 0);
   fake_storfs_fail_op(WRITE, true, 2);
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE),
+                    STORFS_ERR_WRITE_FAILED);
+  fake_storfs_fail_op(WRITE, false, 0);
+  fake_storfs_fail_op(WRITE, true, 3);
   storfs_crc16_ExpectAnyArgsAndReturn(FAKE_CRC16);
-  TEST_ASSERT_EQUAL(snode_create(fs, name, &page), STORFS_ERR_WRITE_FAILED);
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE),
+                    STORFS_ERR_WRITE_FAILED);
   fake_storfs_fail_op(WRITE, false, 0);
 
   // Test improper input
@@ -95,7 +103,7 @@ void test_snode_write(void) {
   storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
 
   SNodeInst inst = { 0 };
-  TEST_ASSERT_EQUAL(snode_create(fs, name, &page), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE), STORFS_OK);
   TEST_ASSERT_EQUAL(snode_lookup(fs, page, &inst), STORFS_OK);
 
   // Write all the data from the file, read it and compare
@@ -159,8 +167,12 @@ void test_snode_write_read_alternate(void) {
 
   storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
 
-  TEST_ASSERT_EQUAL(snode_create(fs, snode_1_name, &snode_1_page), STORFS_OK);
-  TEST_ASSERT_EQUAL(snode_create(fs, snode_2_name, &snode_2_page), STORFS_OK);
+  TEST_ASSERT_EQUAL(
+      snode_create(fs, snode_1_name, &snode_1_page, SNODE_TYPE_FILE),
+      STORFS_OK);
+  TEST_ASSERT_EQUAL(
+      snode_create(fs, snode_2_name, &snode_2_page, SNODE_TYPE_FILE),
+      STORFS_OK);
 
   // Write all the data from the file, read it and compare
   SNodeInst inst_1 = { 0 };
