@@ -8,6 +8,9 @@
 #define MULT_BY_8(val)       (val << 3)
 #define CEIL_DIV(num, denom) ((num + denom - 1) / denom)
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 /*
  * cross platform, cross compiler, cross architecture breakpoint
  * https://gist.github.com/prashantrahul141/ff121cd1747d6175f2e83478388815bb

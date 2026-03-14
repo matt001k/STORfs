@@ -3,8 +3,9 @@
 
 #include "storfs.h"
 
+uint32_t storfs_crc32(const uint8_t *buf, uint32_t len);
 /** @brief Used to compare crc code from a file and a buffer */
-#ifdef STORFS_USE_CRC
+#if STORFS_USE_CRC == 1
 #define STORFS_CRC_CALC(storfsInst, buf, buflen)                               \
   (storfsInst->crc(storfsInst, buf, buflen))
 #else
