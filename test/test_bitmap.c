@@ -1,6 +1,5 @@
 #include "atomic.h"
 #include "bitmap.h"
-#include "common.h"
 #include "fake_flash.h"
 #include "unity.h"
 
@@ -46,7 +45,7 @@ void test_bitmap_find_and_alloc(void) {
   // Test finding page after wrapping around
   storfs_page_t page_offset = fs->pageCount / 2;
   fs->bitmap.hint           = page_offset + 1;
-  TEST_ASSERT_EQUAL(bitmap_free(fs, page_offset), STORFS_OK);
+  TEST_ASSERT_EQUAL(bitmap_alloc_page(fs, page_offset, PAGE_FREE), STORFS_OK);
   TEST_ASSERT_EQUAL(bitmap_alloc(fs, &page), STORFS_OK);
   TEST_ASSERT_EQUAL(page, page_offset);
 
@@ -78,11 +77,14 @@ void test_bitmap_free(void) {
   }
 
   // Test invalid parameters
-  TEST_ASSERT_EQUAL(bitmap_free(fs, hint_original - 1),
+  TEST_ASSERT_EQUAL(bitmap_alloc_page(fs, hint_original - 1, PAGE_FREE),
                     STORFS_ERR_INVALID_PARAM);
-  TEST_ASSERT_EQUAL(bitmap_free(fs, 0), STORFS_ERR_INVALID_PARAM);
-  TEST_ASSERT_EQUAL(bitmap_free(fs, fs->pageCount), STORFS_ERR_INVALID_PARAM);
-  TEST_ASSERT_EQUAL(bitmap_free(NULL, hint_original), STORFS_ERR_NULL_POINTER);
+  TEST_ASSERT_EQUAL(bitmap_alloc_page(fs, 0, PAGE_FREE),
+                    STORFS_ERR_INVALID_PARAM);
+  TEST_ASSERT_EQUAL(bitmap_alloc_page(fs, fs->pageCount, PAGE_FREE),
+                    STORFS_ERR_INVALID_PARAM);
+  TEST_ASSERT_EQUAL(bitmap_alloc_page(NULL, hint_original, PAGE_FREE),
+                    STORFS_ERR_NULL_POINTER);
 
   // Test freeing all allocated pages
   uint8_t alloc;
@@ -90,7 +92,7 @@ void test_bitmap_free(void) {
     storfs_err_t err = bitmap_get_alloc(fs, i, &alloc);
     TEST_ASSERT_EQUAL(err, STORFS_OK);
     TEST_ASSERT_EQUAL(alloc, PAGE_ALLOC);
-    err = bitmap_free(fs, i);
+    err = bitmap_alloc_page(fs, i, PAGE_FREE);
     TEST_ASSERT_EQUAL(err, STORFS_OK);
     err = bitmap_get_alloc(fs, i, &alloc);
     TEST_ASSERT_EQUAL(err, STORFS_OK);
@@ -99,7 +101,8 @@ void test_bitmap_free(void) {
 
   // Test failure to read
   fake_storfs_fail_op(READ, true, 1);
-  TEST_ASSERT_EQUAL(bitmap_free(fs, hint_original), STORFS_ERR_READ_FAILED);
+  TEST_ASSERT_EQUAL(bitmap_alloc_page(fs, hint_original, PAGE_FREE),
+                    STORFS_ERR_READ_FAILED);
   fake_storfs_fail_op(READ, false, 0);
 }
 
@@ -173,7 +176,7 @@ void test_bitmap_get_contiguous(void) {
 
     // Free blocks will be up to offset - 1
     if(i < offset - 1) {
-      TEST_ASSERT_EQUAL(bitmap_free(fs, page), STORFS_OK);
+      TEST_ASSERT_EQUAL(bitmap_alloc_page(fs, page, PAGE_FREE), STORFS_OK);
     }
   }
   fs->bitmap.hint = 0;
@@ -247,7 +250,7 @@ void test_bitmap_alloc_and_free_contiguous(void) {
   for(uint8_t i = 0; i < contiguous_pages; i++) {
     err = bitmap_alloc(fs, &alloc_page);
     TEST_ASSERT_EQUAL(err, STORFS_OK);
-    err = bitmap_free(fs, alloc_page);
+    err = bitmap_alloc_page(fs, alloc_page, PAGE_FREE);
     TEST_ASSERT_EQUAL(err, STORFS_OK);
   }
   err = bitmap_alloc(fs, &alloc_page);
@@ -261,7 +264,7 @@ void test_bitmap_alloc_and_free_contiguous(void) {
   TEST_ASSERT_EQUAL(fs->bitmap.hint, new_hint);
 
   // Free the pages allocated and check that it is less than max
-  err = bitmap_free(fs, alloc_page);
+  err = bitmap_alloc_page(fs, alloc_page, PAGE_FREE);
   TEST_ASSERT_EQUAL(err, STORFS_OK);
   err = bitmap_free_contiguous(fs, hint_original, &count, max);
   TEST_ASSERT_EQUAL(err, STORFS_OK);
@@ -326,14 +329,14 @@ void test_bitmap_double_free(void) {
   TEST_ASSERT_EQUAL(bitmap_alloc(fs, &page), STORFS_OK);
 
   // First free should succeed
-  TEST_ASSERT_EQUAL(bitmap_free(fs, page), STORFS_OK);
+  TEST_ASSERT_EQUAL(bitmap_alloc_page(fs, page, PAGE_FREE), STORFS_OK);
 
   uint8_t alloc;
   TEST_ASSERT_EQUAL(bitmap_get_alloc(fs, page, &alloc), STORFS_OK);
   TEST_ASSERT_EQUAL(alloc, PAGE_FREE);
 
   // Second free on same page - verify it doesn't corrupt state
-  TEST_ASSERT_EQUAL(bitmap_free(fs, page), STORFS_OK);
+  TEST_ASSERT_EQUAL(bitmap_alloc_page(fs, page, PAGE_FREE), STORFS_OK);
   TEST_ASSERT_EQUAL(bitmap_get_alloc(fs, page, &alloc), STORFS_OK);
   TEST_ASSERT_EQUAL(alloc, PAGE_FREE);
 }

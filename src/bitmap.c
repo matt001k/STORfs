@@ -2,7 +2,6 @@
 
 #include "atomic.h"
 #include "common.h"
-#include "core.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -367,7 +366,7 @@ storfs_err_t bitmap_create(storfs_t *fs) {
 
   for(uint32_t i = 0; i < fs->pageCount; i++) {
     uint32_t byte_index = DIV_BY_8(i) % fs->pageSize;
-    uint32_t bit_index  = get_bit_offset(i);
+    uint32_t bit_index  = i % 8;
 
     // Protected pages are the root page and bitmap pages
     if(i < STORFS_PROTECTED_PAGES(fs)) {
@@ -433,10 +432,10 @@ storfs_err_t bitmap_alloc(storfs_t *fs, storfs_page_t *page) {
 }
 
 /*!
- @brief Free a specified page
+ @brief Allocate or free a specified page
 
- @details Frees the specified page by clearing its bit in the bitmap.
-          Validates that the page is not protected and is within bounds.
+ @details Allocates or frees the specified page by setting/clearing its bit in
+ the bitmap. Validates that the page is not protected and is within bounds.
 
  @param fs pointer to the filesystem instance
  @param page the page number to free
@@ -446,7 +445,8 @@ storfs_err_t bitmap_alloc(storfs_t *fs, storfs_page_t *page) {
          STORFS_OK on success
          Other error upon failure
  */
-storfs_err_t bitmap_free(storfs_t *fs, storfs_page_t page) {
+storfs_err_t
+bitmap_alloc_page(storfs_t *fs, storfs_page_t page, uint8_t alloc) {
   if(!fs) {
     return STORFS_ERR_NULL_POINTER;
   }
@@ -464,9 +464,19 @@ storfs_err_t bitmap_free(storfs_t *fs, storfs_page_t page) {
 
   uint8_t bit  = get_bit_offset(page);
   uint8_t mask = 1 << bit;
-  *byte &= ~mask;
 
-  return write_bitmap_page(fs, page);
+  if(alloc == PAGE_FREE) {
+    *byte &= ~mask;
+  } else {
+    *byte |= mask;
+  }
+
+  err = write_bitmap_page(fs, page);
+  if(err != STORFS_OK) {
+    return err;
+  }
+
+  return bitmap_find_next(fs, NULL);
 }
 
 /*!
