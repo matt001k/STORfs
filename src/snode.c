@@ -66,6 +66,8 @@ storfs_err_t snode_create(storfs_t      *fs,
   }
 
   strncpy((char *)node.name, name, STORFS_MAX_FILE_NAME);
+  node.name[STORFS_MAX_FILE_NAME - 1] = '\0';
+
   node.type = type;
   return snode_update(fs, &node, *page);
 }
@@ -101,10 +103,8 @@ static storfs_err_t find_page_in_extents(SNodeExtentCache  *cache,
                                          const SNodeExtent *extents,
                                          uint32_t           count,
                                          uint32_t          *logical_page) {
-  uint32_t i = 0;
-
   // If extents[i] == 0, the extent is empty
-  for(; i < count && extents[i].count > 0; i++) {
+  for(uint32_t i = 0; i < count && extents[i].count > 0; i++) {
     if(*logical_page < extents[i].count) {
       return STORFS_OK;
     }
@@ -147,8 +147,7 @@ static storfs_err_t find_double_indirect_location(storfs_t         *fs,
   storfs_page_t single_indirect_location = 0;
 
   // Determine which indirect extent page holds the desired logical location
-  uint32_t i = 0;
-  for(; i < EXTENTS_PER_PAGE(fs); i++) {
+  for(uint32_t i = 0; i < EXTENTS_PER_PAGE(fs); i++) {
     if(!extents[i].count) {
       break;
     }
@@ -202,12 +201,11 @@ static storfs_err_t find_location(storfs_t         *fs,
   logical.pageLoc                = data_beyond_snode / fs->pageSize;
   logical.byteLoc                = data_beyond_snode % fs->pageSize;
 
-  storfs_err_t err          = STORFS_ERR_NOT_FOUND;
   uint32_t     extent_count = ARRAY_SIZE(inst->node.direct);
-  err                       = find_page_in_extents(cache,
-                             inst->node.direct,
-                             extent_count,
-                             &logical.pageLoc);
+  storfs_err_t err          = find_page_in_extents(cache,
+                                          inst->node.direct,
+                                          extent_count,
+                                          &logical.pageLoc);
   if(err == STORFS_OK) {
     find_update_cache(fs, cache, logical);
     return STORFS_OK;
@@ -245,6 +243,7 @@ snode_find_read_location(storfs_t *fs, SNodeInst *inst, storfs_byte_t offset) {
 
   return find_location(fs, inst, &inst->read, offset);
 }
+
 storfs_err_t snode_find_write_location(storfs_t *fs, SNodeInst *inst) {
   if(!fs || !inst) {
     return STORFS_ERR_NULL_POINTER;
@@ -275,14 +274,13 @@ static inline void erase_decrement_extent(const storfs_t    *fs,
                                           SNodeExtent       *extent,
                                           const SNodeOpInst *op) {
   // Decrement extent count by the number of pages contiguously freed
-
   extent->count -= calculate_freed(fs, extent, op);
   if(!extent->count) {
     extent->start = 0;
   }
 }
 
-static inline storfs_err_t
+static storfs_err_t
 erase_snode_indirect_page(storfs_t *fs, SNodeInst *inst, storfs_page_t page) {
   storfs_err_t err = snode_update(fs, &inst->node, inst->page);
   if(err != STORFS_OK) {
@@ -295,7 +293,7 @@ static storfs_err_t process_extent_pages(storfs_t    *fs,
                                          SNodeOpInst *op,
                                          uint32_t     indirect_idx,
                                          uint32_t    *indirect_page) {
-  storfs_err_t err;
+  storfs_err_t err = STORFS_OK;
 
   if(op->op == SNODE_WRITE) {
     uint32_t max = CALC_CONTIGUOUS_MAX(fs, op);
@@ -392,18 +390,17 @@ static storfs_err_t process_indirect_extents(storfs_t        *fs,
     return STORFS_ERR_NOT_FOUND;
   }
 
-  storfs_page_t init_single_indirect = inst->node.indirect.single;
+  storfs_page_t init_single_indirect = node->indirect.single;
 
   err = process_extent_pages(fs,
                              op,
                              single_indirect_extent_idx,
-                             &inst->node.indirect.single);
+                             &node->indirect.single);
   if(err != STORFS_OK) {
     return err;
   }
 
-  if(op->op == SNODE_ERASE && !inst->node.indirect.single &&
-     init_single_indirect) {
+  if(op->op == SNODE_ERASE && !node->indirect.single && init_single_indirect) {
     err = erase_snode_indirect_page(fs, inst, init_single_indirect);
   }
 
@@ -416,7 +413,8 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
                                              SNodeExtentCache cache) {
   storfs_err_t   err     = STORFS_OK;
   SNode         *node    = &inst->node;
-  const uint32_t si_size = DIRECT_EXTENT_SIZE + EXTENTS_PER_PAGE(fs);
+  const uint32_t epp     = EXTENTS_PER_PAGE(fs);
+  const uint32_t si_size = DIRECT_EXTENT_SIZE + epp;
 
   if(op->op == SNODE_WRITE && !node->indirect.multiple) {
     err = snode_alloc_indirect_page(fs, inst, &node->indirect.multiple);
@@ -429,9 +427,8 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     return STORFS_ERR_NOT_FOUND;
   }
 
-  uint32_t single_indirect_page_idx =
-      (cache.idx - si_size) / EXTENTS_PER_PAGE(fs);
-  err = atomic_read(fs, node->indirect.multiple);
+  uint32_t single_indirect_page_idx = (cache.idx - si_size) / epp;
+  err                               = atomic_read(fs, node->indirect.multiple);
   if(err != STORFS_OK) {
     return err;
   }
@@ -460,9 +457,8 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     }
   }
 
-  uint32_t single_indirect_extent_idx =
-      (cache.idx - si_size) % EXTENTS_PER_PAGE(fs);
-  storfs_page_t init_single_indirect = single_indirect_page;
+  uint32_t      single_indirect_extent_idx = (cache.idx - si_size) % epp;
+  storfs_page_t init_single_indirect       = single_indirect_page;
 
   err = process_extent_pages(fs,
                              op,
@@ -618,7 +614,7 @@ static storfs_err_t snode_read_or_write_data(storfs_t         *fs,
   }
 
   return err;
-};
+}
 
 static storfs_err_t erase_data(storfs_t         *fs,
                                SNodeInst        *inst,
