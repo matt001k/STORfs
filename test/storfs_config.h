@@ -15,6 +15,6 @@
 
 #define STORFS_USE_CRC 0
 
-#define STORFS_WEAR_LEVEL_RETRY_NUM
+#define STORFS_WEAR_LEVEL_RETRY_NUM 3
 
 #endif
