@@ -18,6 +18,7 @@
 
 #include "storfs_config.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 /** @brief Flags used for FILE struct */
@@ -87,16 +88,16 @@
 #define STORFS_INFO_REG_FILE_TYPE_FILE_FRAGMENT (0X0 << 2)
 
 /** @brief Alias for size in bytes of items */
-typedef uint32_t storfs_size_t;
+typedef size_t storfs_size_t;
 
 /** @brief Describes the page location */
-typedef uint32_t storfs_page_t;
+typedef uint64_t storfs_page_t;
 
 /** @brief Describes the byte location */
 typedef uint32_t storfs_byte_t;
 
 /** @brief Filesize alias for filesize register */
-typedef uint32_t storfs_file_size_t;
+typedef size_t storfs_file_size_t;
 
 /** @brief Used to store the name of a file */
 typedef uint8_t storfs_name_t;
