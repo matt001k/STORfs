@@ -51,6 +51,20 @@ snode_update(storfs_t *fs, SNode *node, storfs_page_t page) {
   return atomic_write(fs, page);
 }
 
+/*!
+ @brief Create an snode
+
+ @details This function will allocate a page for a new snode
+
+ @param fs pointer to the filesystem instance
+ @param name snode name
+ @param page page which has been allocated to the snode
+ @param size type of snode:
+                SNODE_TYPE_FILE
+                SNODE_TYPE_DIR
+
+ @return storfs_err_t
+ */
 storfs_err_t snode_create(storfs_t      *fs,
                           const char    *name,
                           storfs_page_t *page,
@@ -72,6 +86,24 @@ storfs_err_t snode_create(storfs_t      *fs,
   return snode_update(fs, &node, *page);
 }
 
+/*!
+ @brief Lookup an snode based on it's input page
+
+ @details Find
+          Find
+          Find
+
+ @param fs pointer to the filesystem instance
+ @param inst pointer to snode instance
+ @param data data to read from the snode
+ @param size size of data to read from the snode
+
+ @return STORFS_OK on success
+         STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
+         STORFS_ERR_READ_FAILED if reading from the filesystem fails
+         STORFS_ERR_ERASE_FAILED if erasing from the filesystem fails
+         STORFS_ERR_WRITE_FAILED if writing from the filesystem fails
+ */
 storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNodeInst *inst) {
   if(!fs || !inst) {
     return STORFS_ERR_NULL_POINTER;
@@ -722,6 +754,24 @@ static storfs_err_t snode_perform_op(storfs_t    *fs,
   return err;
 }
 
+/*!
+ @brief Write data to an snode instance
+
+ @details Must call @link snode_find_write_location @endlink before writing to
+          the snode. This function will append data to the end of the snode.
+          The cache write location will be updated with each write.
+
+ @param fs pointer to the filesystem instance
+ @param inst pointer to snode instance
+ @param data data to write to the snode
+ @param size size of data to write to the snode
+
+ @return STORFS_OK on success
+         STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
+         STORFS_ERR_READ_FAILED if reading from the filesystem fails
+         STORFS_ERR_ERASE_FAILED if erasing from the filesystem fails
+         STORFS_ERR_WRITE_FAILED if writing from the filesystem fails
+ */
 storfs_err_t snode_write_data(storfs_t      *fs,
                               SNodeInst     *inst,
                               const uint8_t *data,
@@ -731,6 +781,24 @@ storfs_err_t snode_write_data(storfs_t      *fs,
   return snode_perform_op(fs, inst, &op, (uint8_t *)data, size);
 }
 
+/*!
+ @brief Read data from an snode instance
+
+ @details Must call @link snode_find_read_location @endlink before reading from
+          an snode. This function will begin reading from the offset indicated
+          in @link snode_find_read_location @endlink.
+
+ @param fs pointer to the filesystem instance
+ @param inst pointer to snode instance
+ @param data data to read from the snode
+ @param size size of data to read from the snode
+
+ @return STORFS_OK on success
+         STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
+         STORFS_ERR_READ_FAILED if reading from the filesystem fails
+         STORFS_ERR_ERASE_FAILED if erasing from the filesystem fails
+         STORFS_ERR_WRITE_FAILED if writing from the filesystem fails
+ */
 storfs_err_t
 snode_read_data(storfs_t *fs, SNodeInst *inst, uint8_t *data, uint32_t size) {
   SNodeOpInst op = { .op = SNODE_READ, .bytes_remaining = size };
@@ -738,6 +806,24 @@ snode_read_data(storfs_t *fs, SNodeInst *inst, uint8_t *data, uint32_t size) {
   return snode_perform_op(fs, inst, &op, (uint8_t *)data, size);
 }
 
+/*!
+ @brief Erase data from an snode instance
+
+ @details Must call @link snode_find_write_location @endlink before erasing
+          data from an snode. This function will erase data from the end
+          of the snode. The cache write location will be updated with each
+          erase.
+
+ @param fs pointer to the filesystem instance
+ @param inst pointer to snode instance
+ @param size size of data to erase from the snode
+
+ @return STORFS_OK on success
+         STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
+         STORFS_ERR_READ_FAILED if reading from the filesystem fails
+         STORFS_ERR_ERASE_FAILED if erasing from the filesystem fails
+         STORFS_ERR_WRITE_FAILED if writing from the filesystem fails
+ */
 storfs_err_t snode_erase_data(storfs_t *fs, SNodeInst *inst, uint32_t size) {
   SNodeOpInst op = { .op = SNODE_ERASE, .bytes_remaining = size };
 
