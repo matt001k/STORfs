@@ -54,7 +54,10 @@ snode_update(storfs_t *fs, SNode *node, storfs_page_t page) {
 /*!
  @brief Create an snode
 
- @details This function will allocate a page for a new snode
+ @details This function will allocate a page for a new snode and save it.
+          The snode will be available again through the @link
+          snode_lookup @endlink function. When the snode is saved, a crc
+          is calculated just on the data structure.
 
  @param fs pointer to the filesystem instance
  @param name snode name
@@ -87,22 +90,19 @@ storfs_err_t snode_create(storfs_t      *fs,
 }
 
 /*!
- @brief Lookup an snode based on it's input page
+ @brief Lookup an snode based on a page location
 
- @details Find
-          Find
-          Find
+ @details Finds information about an snode. Will validate the crc matches what
+          is expected in order to validate the contents of the snode.
 
  @param fs pointer to the filesystem instance
+ @param page page to obtain snode information
  @param inst pointer to snode instance
- @param data data to read from the snode
- @param size size of data to read from the snode
 
  @return STORFS_OK on success
          STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
+         STORFS_ERR_CRC_MISMATCH if crc calculation fails
          STORFS_ERR_READ_FAILED if reading from the filesystem fails
-         STORFS_ERR_ERASE_FAILED if erasing from the filesystem fails
-         STORFS_ERR_WRITE_FAILED if writing from the filesystem fails
  */
 storfs_err_t snode_lookup(storfs_t *fs, storfs_page_t page, SNodeInst *inst) {
   if(!fs || !inst) {
@@ -135,7 +135,7 @@ static storfs_err_t find_page_in_extents(SNodeExtentCache  *cache,
                                          const SNodeExtent *extents,
                                          uint32_t           count,
                                          uint32_t          *logical_page) {
-  // If extents[i] == 0, the extent is empty
+  // If extents[i] == {0}, the extent is empty
   for(uint32_t i = 0; i < count && extents[i].count > 0; i++) {
     if(*logical_page < extents[i].count) {
       return STORFS_OK;
@@ -207,7 +207,7 @@ static storfs_err_t find_double_indirect_location(storfs_t         *fs,
 static void
 find_update_cache(storfs_t *fs, SNodeExtentCache *cache, storfs_loc_t logical) {
   cache->offset_bytes = logical.pageLoc * fs->pageSize + logical.byteLoc;
-  // Increment here as index 0 is the inline data
+  // Increment here to account for index 0 being the snode inline data
   cache->idx++;
 }
 
@@ -222,17 +222,19 @@ static storfs_err_t find_location(storfs_t         *fs,
     return STORFS_OK;
   }
 
-  // Find the logical page offset, how many pages would the data consume
+  // Find the logical page offset, how many pages would all the data consume
   // in a single contiguous block
   const uint32_t snode_inline_data_size = INLINE_DATA_SIZE(fs);
 
-  // logical.pageLoc is decremented throughout these operations if non zero,
-  // this will be the total offset in bytes from the extent start location
+  // The logical page location is decremented throughout these operations if
+  // it is non-zero, this will be the total offset in bytes from the extent's
+  // starting location
   storfs_loc_t logical;
   uint32_t     data_beyond_snode = offset - snode_inline_data_size;
   logical.pageLoc                = data_beyond_snode / fs->pageSize;
   logical.byteLoc                = data_beyond_snode % fs->pageSize;
 
+  // Determine if location is in direct extents
   uint32_t     extent_count = ARRAY_SIZE(inst->node.direct);
   storfs_err_t err          = find_page_in_extents(cache,
                                           inst->node.direct,
@@ -267,6 +269,23 @@ static storfs_err_t find_location(storfs_t         *fs,
   return err;
 }
 
+/*!
+ @brief Find the read location extent index based on an offset byte location
+
+ @details Will find the location to begin reading an snode from. This must be
+          invoked before an snode is initially read. Will update the read cache
+          when STORFS_OK or STORFS_ERR_NOT_FOUND is returned.
+
+ @param fs pointer to the filesystem instance
+ @param page page to obtain snode information
+ @param inst pointer to snode instance
+
+ @return STORFS_OK on success
+         STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
+         STORFS_ERR_NOT_FOUND could not find the location offset
+         STORFS_ERR_CRC_MISMATCH if crc calculation fails
+         STORFS_ERR_READ_FAILED if reading from the filesystem fails
+ */
 storfs_err_t
 snode_find_read_location(storfs_t *fs, SNodeInst *inst, storfs_byte_t offset) {
   if(!fs || !inst) {
@@ -715,7 +734,7 @@ static storfs_err_t snode_perform_op(storfs_t    *fs,
     cache = &inst->read;
   }
 
-  // Do not erase past end of file
+  // Do not erase past end of an snode
   if(op->op == SNODE_ERASE && size > inst->node.size) {
     return STORFS_ERR_INVALID_PARAM;
   }
