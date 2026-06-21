@@ -23,6 +23,11 @@ typedef struct {
   uint32_t    bytes_remaining;
 } SNodeOpInst;
 
+typedef struct {
+  storfs_page_t single_location;
+  storfs_page_t total;
+} SNodeMultiple;
+
 static storfs_err_t snode_alloc_new_page(storfs_t *fs, storfs_page_t *page) {
   storfs_err_t err = bitmap_alloc(fs, page);
   if(err != STORFS_OK) {
@@ -384,6 +389,7 @@ static storfs_err_t process_extent_pages(storfs_t    *fs,
   }
 
   if(op->op == SNODE_ERASE && !indirect_idx && !indirect_extent->start) {
+    // If this is the first indirect index and it is empty
     *indirect_page = 0;
   }
 
@@ -484,9 +490,9 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     return err;
   }
 
-  SNodeExtent  *multiple_extents = (SNodeExtent *)fs->working_buf;
-  storfs_page_t single_indirect_page =
-      multiple_extents[single_indirect_page_idx].start;
+  SNodeMultiple *multiple_extents = (SNodeMultiple *)fs->working_buf;
+  storfs_page_t  single_indirect_page =
+      multiple_extents[single_indirect_page_idx].single_location;
   if(op->op == SNODE_WRITE && !single_indirect_page) {
     err = snode_alloc_new_page(fs, &single_indirect_page);
     if(err != STORFS_OK) {
@@ -499,8 +505,9 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
       return err;
     }
 
-    multiple_extents = (SNodeExtent *)fs->working_buf;
-    multiple_extents[single_indirect_page_idx].start = single_indirect_page;
+    multiple_extents = (SNodeMultiple *)fs->working_buf;
+    multiple_extents[single_indirect_page_idx].single_location =
+        single_indirect_page;
 
     err = atomic_write(fs, node->indirect.multiple);
     if(err != STORFS_OK) {
@@ -525,14 +532,14 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
       return err;
     }
 
-    multiple_extents             = (SNodeExtent *)fs->working_buf;
-    SNodeExtent *multiple_extent = &multiple_extents[single_indirect_page_idx];
+    multiple_extents        = (SNodeMultiple *)fs->working_buf;
+    SNodeMultiple *multiple = &multiple_extents[single_indirect_page_idx];
     if(op->op == SNODE_WRITE) {
-      multiple_extent->count += op->extent.count;
+      multiple->total += op->extent.count;
     } else {
-      multiple_extent->count -= calculate_freed(fs, &op->extent, op);
-      if(!multiple_extent->count) {
-        multiple_extent->start = 0;
+      multiple->total -= calculate_freed(fs, &op->extent, op);
+      if(!multiple->total) {
+        multiple->single_location = 0;
       }
     }
 
@@ -550,7 +557,7 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     }
 
     bool empty_first_extent =
-        !single_indirect_page_idx && !multiple_extent->start;
+        !single_indirect_page_idx && !multiple->single_location;
     if(op->op == SNODE_ERASE && empty_first_extent) {
       storfs_page_t init_multiple_indirect = node->indirect.multiple;
       node->indirect.multiple              = 0;

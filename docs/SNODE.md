@@ -76,19 +76,19 @@ This page of extents can be visually represented as follows:
 
 ```
 +----------+
-| Extent 1 |
+| Extent 1 | ---> start = 100, count = 5
 +----------+
-| Extent 2 |
+| Extent 2 | ---> start = 140, count = 12
 +----------+
-| Extent 3 |
+| Extent 3 | ---> start = 409, count = 2
 +----------+
-| Extent 4 |
+| Extent 4 | ---> start = 1030, count = 136
 +----------+
-| Extent 5 |
+| Extent 5 | ---> start = 1117, count = 23
 +----------+
-| Extent 6 |
+| Extent 6 | ---> start = 2020, count = 1
 +----------+
-| Extent 7 |
+| Extent 7 | ---> start = 2023, count = 30
 +----------+
 |   ...    |
 | Extent N |
@@ -107,8 +107,39 @@ and $s_e$ is the size of an extent entry, `sizeof(SNodeExtent)`.
 
 ### Multiple Extents
 
-The final layer to the extents are the multiple extents.
-Each individual
+The final layer of extents are multiple extents.
+Each entry in the multiple extent pages has the following contents:
+
+```c
+typedef struct {
+  storfs_page_t single_location;
+  storfs_page_t total;
+} SNodeMultiple;
+```
+
+`single_location` contains the location of a single indirect extent page
+and `total` indicates the total number of pages allocated in the indirect page.
+The following provides an example of multiple extents:
+
+```
++------------+
+| Multiple 1 | --->  +----------+
++------------+       | Extent 1 | ---> start = 100, count = 5
+                     +----------+
+                     | Extent 2 | ---> start = 140, count = 12
+                     +----------+
+                     | Extent 3 | ---> start = 409, count = 2
+                     +----------+
+                     | Extent 4 | ---> start = 1030, count = 136
+                     +----------+
+                     | Extent 5 | ---> start = 1117, count = 23
+                     +----------+
+                     | Extent 6 | ---> start = 2020, count = 1
+                     +----------+
+                     | Extent 7 | ---> start = 2023, count = 30
+                     +----------+
+```
+
 
 
 ## Operations
