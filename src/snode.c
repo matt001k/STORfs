@@ -8,6 +8,7 @@
 #include <string.h>
 
 #define INLINE_DATA_SIZE(f)       (f->pageSize - sizeof(SNode))
+#define NUM_MULTIPLE_EXTENTS(f)   ((f->pageSize / sizeof(SNodeMultiple)))
 #define EXTENTS_PER_PAGE(f)       ((f->pageSize / sizeof(SNodeExtent)))
 #define CALC_CONTIGUOUS_MAX(f, o) CEIL_DIV(o->bytes_remaining, f->pageSize)
 
@@ -180,22 +181,22 @@ static storfs_err_t find_double_indirect_location(storfs_t         *fs,
     return err;
   }
 
-  SNodeExtent  *extents                  = (SNodeExtent *)fs->working_buf;
-  storfs_page_t single_indirect_location = 0;
+  SNodeMultiple *multiple                 = (SNodeMultiple *)fs->working_buf;
+  storfs_page_t  single_indirect_location = 0;
 
   // Determine which indirect extent page holds the desired logical location
-  for(uint32_t i = 0; i < EXTENTS_PER_PAGE(fs); i++) {
-    if(!extents[i].count) {
+  for(uint32_t i = 0; i < NUM_MULTIPLE_EXTENTS(fs); i++) {
+    if(!multiple[i].total) {
       break;
     }
 
-    if(*logical_page < extents[i].count) {
-      single_indirect_location = extents[i].start;
+    if(*logical_page < multiple[i].total) {
+      single_indirect_location = multiple[i].single_location;
       break;
     }
 
     cache->idx += EXTENTS_PER_PAGE(fs);
-    *logical_page -= extents[i].count;
+    *logical_page -= multiple[i].total;
   }
 
   if(!single_indirect_location) {
@@ -206,6 +207,11 @@ static storfs_err_t find_double_indirect_location(storfs_t         *fs,
                                      cache,
                                      single_indirect_location,
                                      logical_page);
+  // The location is at the end of the data
+  if(err == STORFS_ERR_NOT_FOUND) {
+    err = STORFS_ERR_NO_SPACE;
+  }
+
   return err;
 }
 
@@ -266,7 +272,7 @@ static storfs_err_t find_location(storfs_t         *fs,
   }
 
   err = find_double_indirect_location(fs, inst, cache, &logical.pageLoc);
-  if(err != STORFS_OK && err != STORFS_ERR_NOT_FOUND) {
+  if(err != STORFS_OK && err != STORFS_ERR_NO_SPACE) {
     return err;
   }
 
@@ -279,15 +285,18 @@ static storfs_err_t find_location(storfs_t         *fs,
 
  @details Will find the location to begin reading an snode from. This must be
           invoked before an snode is initially read. Will update the read cache
-          when STORFS_OK or STORFS_ERR_NOT_FOUND is returned.
+          when STORFS_OK, STORFS_ERR_NOT_FOUND or STORFS_ERR_NO_SPACE is
+          returned.
 
  @param fs pointer to the filesystem instance
  @param page page to obtain snode information
  @param inst pointer to snode instance
+ @param offset
 
  @return STORFS_OK on success
          STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
          STORFS_ERR_NOT_FOUND could not find the location offset
+         STORFS_ERR_NO_SPACE there is no more data to read from the file
          STORFS_ERR_CRC_MISMATCH if crc calculation fails
          STORFS_ERR_READ_FAILED if reading from the filesystem fails
  */
@@ -300,6 +309,25 @@ snode_find_read_location(storfs_t *fs, SNodeInst *inst, storfs_byte_t offset) {
   return find_location(fs, inst, &inst->read, offset);
 }
 
+/*!
+ @brief Find the write location extent index based
+
+ @details Will find the location to begin writing to or erasing from an snode.
+          This must be before an snode is initially written to or erased from.
+          Will update the write cache when STORFS_OK, STORFS_ERR_NOT_FOUND or
+          STORFS_ERR_NO_SPACE is returned.
+
+ @param fs pointer to the filesystem instance
+ @param page page to obtain snode information
+ @param inst pointer to snode instance
+
+ @return STORFS_OK on success
+         STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
+         STORFS_ERR_NO_SPACE there is no more data to write to the file
+         STORFS_ERR_NOT_FOUND could not find the location offset
+         STORFS_ERR_CRC_MISMATCH if crc calculation fails
+         STORFS_ERR_READ_FAILED if reading from the filesystem fails
+ */
 storfs_err_t snode_find_write_location(storfs_t *fs, SNodeInst *inst) {
   if(!fs || !inst) {
     return STORFS_ERR_NULL_POINTER;
@@ -526,7 +554,10 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     return err;
   }
 
-  if(op->op != SNODE_READ) {
+  // Only update multiple if it is on a byte boundary
+  bool is_boundary = cache.offset_bytes % fs->pageSize == 0;
+
+  if(op->op != SNODE_READ && is_boundary) {
     err = atomic_read(fs, node->indirect.multiple);
     if(err != STORFS_OK) {
       return err;
