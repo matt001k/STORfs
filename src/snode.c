@@ -22,6 +22,7 @@ typedef struct {
   SNodeExtent extent;  // Allocated extent on write, filled from flash otherwise
   SNodeOp     op;
   uint32_t    bytes_remaining;
+  bool        is_boundary;
 } SNodeOpInst;
 
 typedef struct {
@@ -168,10 +169,11 @@ static storfs_err_t find_extent_in_indirect_page(storfs_t         *fs,
   return find_page_in_extents(cache, extents, extent_count, logical_page);
 }
 
-static storfs_err_t find_double_indirect_location(storfs_t         *fs,
-                                                  SNodeInst        *inst,
-                                                  SNodeExtentCache *cache,
-                                                  storfs_page_t *logical_page) {
+static storfs_err_t
+find_multiple_indirect_location(storfs_t         *fs,
+                                SNodeInst        *inst,
+                                SNodeExtentCache *cache,
+                                storfs_page_t    *logical_page) {
   if(!inst->node.indirect.multiple) {
     return STORFS_ERR_NOT_FOUND;
   }
@@ -200,6 +202,11 @@ static storfs_err_t find_double_indirect_location(storfs_t         *fs,
   }
 
   if(!single_indirect_location) {
+    // The location is at the end of the data
+    if(*logical_page == 0) {
+      return STORFS_ERR_NO_SPACE;
+    }
+
     return STORFS_ERR_NOT_FOUND;
   }
 
@@ -207,10 +214,6 @@ static storfs_err_t find_double_indirect_location(storfs_t         *fs,
                                      cache,
                                      single_indirect_location,
                                      logical_page);
-  // The location is at the end of the data
-  if(err == STORFS_ERR_NOT_FOUND) {
-    err = STORFS_ERR_NO_SPACE;
-  }
 
   return err;
 }
@@ -271,7 +274,7 @@ static storfs_err_t find_location(storfs_t         *fs,
     return err;
   }
 
-  err = find_double_indirect_location(fs, inst, cache, &logical.pageLoc);
+  err = find_multiple_indirect_location(fs, inst, cache, &logical.pageLoc);
   if(err != STORFS_OK && err != STORFS_ERR_NO_SPACE) {
     return err;
   }
@@ -379,7 +382,7 @@ static storfs_err_t process_extent_pages(storfs_t    *fs,
                                          uint32_t    *indirect_page) {
   storfs_err_t err = STORFS_OK;
 
-  if(op->op == SNODE_WRITE) {
+  if(op->op == SNODE_WRITE && op->is_boundary) {
     uint32_t max = CALC_CONTIGUOUS_MAX(fs, op);
     err =
         bitmap_alloc_contiguous(fs, &op->extent.start, &op->extent.count, max);
@@ -395,6 +398,12 @@ static storfs_err_t process_extent_pages(storfs_t    *fs,
 
   SNodeExtent *indirect_extent =
       &((SNodeExtent *)fs->working_buf)[indirect_idx];
+
+  if(!op->is_boundary) {
+    op->extent.start = indirect_extent->start;
+    op->extent.count = indirect_extent->count;
+    return STORFS_OK;
+  }
 
   switch(op->op) {
     case SNODE_WRITE:
@@ -435,6 +444,10 @@ static storfs_err_t process_direct_extents(storfs_t        *fs,
   storfs_err_t err = STORFS_OK;
   extent->start    = direct_extent->start;
   extent->count    = direct_extent->count;
+
+  if(!op->is_boundary) {
+    return STORFS_OK;
+  }
 
   if(op->op == SNODE_WRITE) {
     uint32_t max = CALC_CONTIGUOUS_MAX(fs, op);
@@ -554,10 +567,7 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     return err;
   }
 
-  // Only update multiple if it is on a byte boundary
-  bool is_boundary = cache.offset_bytes % fs->pageSize == 0;
-
-  if(op->op != SNODE_READ && is_boundary) {
+  if(op->op != SNODE_READ && op->is_boundary) {
     err = atomic_read(fs, node->indirect.multiple);
     if(err != STORFS_OK) {
       return err;
@@ -626,6 +636,10 @@ get_modify_extents(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
   }
   // Subtract 1 as 1 is inline page
   extent_cache.idx -= 1;
+
+  // Only update the extent if it is on a byte boundary, else the current
+  // block must be processed
+  op->is_boundary = extent_cache.offset_bytes % fs->pageSize == 0;
 
   if(extent_cache.idx < DIRECT_EXTENT_SIZE) {
     return process_direct_extents(fs, inst, op, extent_cache);
@@ -828,6 +842,8 @@ static storfs_err_t snode_perform_op(storfs_t    *fs,
          STORFS_ERR_READ_FAILED if reading from the filesystem fails
          STORFS_ERR_ERASE_FAILED if erasing from the filesystem fails
          STORFS_ERR_WRITE_FAILED if writing from the filesystem fails
+         STORFS_ERR_NO_FREE_BLOCKS if data is attempted to be writen beyond
+                                   the bounds of the SNode
  */
 storfs_err_t snode_write_data(storfs_t      *fs,
                               SNodeInst     *inst,
