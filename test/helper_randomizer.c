@@ -16,5 +16,4 @@ uint8_t *random_array(size_t size) {
 
 void random_array_free(uint8_t *buf) {
   free(buf);
-  buf = NULL;
 }
