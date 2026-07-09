@@ -17,3 +17,9 @@ uint8_t *random_array(size_t size) {
 void random_array_free(uint8_t *buf) {
   free(buf);
 }
+
+uint64_t random_integer(uint64_t max) {
+  time_t t = clock();
+  srand(t * 10000);
+  return rand() % max;
+}

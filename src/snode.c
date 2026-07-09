@@ -215,11 +215,6 @@ find_multiple_indirect_location(storfs_t         *fs,
   }
 
   if(!single_indirect_location) {
-    // The location is at the end of the data
-    if(*logical_page == 0) {
-      return STORFS_ERR_NO_SPACE;
-    }
-
     return STORFS_ERR_NOT_FOUND;
   }
 
@@ -227,6 +222,11 @@ find_multiple_indirect_location(storfs_t         *fs,
                                      cache,
                                      single_indirect_location,
                                      logical_page);
+
+  // The location is at the end of the data known data if not found
+  if(err == STORFS_ERR_NOT_FOUND) {
+    err = STORFS_ERR_NO_SPACE;
+  }
 
   return err;
 }
@@ -712,19 +712,20 @@ static storfs_err_t snode_read_or_write_data(storfs_t         *fs,
         break;
     }
 
-    location.byteLoc = 0;
-    location.pageLoc++;
     op->bytes_remaining -= bytes_to_process;
 
-    // Update offset within contiguous block
+    // Update offset within contiguous block. Must be computed before
+    // location is advanced to the next page below, since it needs the
+    // page/byte location the data was just written/read at.
     if(err != STORFS_OK || !op->bytes_remaining) {
-      if(pages_accessed) {
-        cache->offset_bytes = (pages_accessed - 1) * fs->pageSize;
-      }
-      cache->offset_bytes += bytes_to_process;
+      cache->offset_bytes =
+          (location.pageLoc - op->extent.start) * fs->pageSize +
+          location.byteLoc + bytes_to_process;
       break;
     }
 
+    location.byteLoc = 0;
+    location.pageLoc++;
     pages_accessed++;
   }
 
@@ -940,8 +941,8 @@ storfs_err_t snode_erase_data(storfs_t *fs, SNodeInst *inst, uint32_t *size) {
     return STORFS_ERR_INVALID_PARAM;
   }
 
-  if(inst->write.idx == idx.multiple) {
-    inst->write.idx--;
+  if(inst->write.idx > idx.multiple) {
+    inst->write.idx = idx.multiple;
   }
 
   SNodeOpInst op = { .op = SNODE_ERASE, .bytes_remaining = *size };

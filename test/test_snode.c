@@ -102,9 +102,10 @@ void test_snode_create(void) {
                     STORFS_ERR_NULL_POINTER);
 }
 
-static inline storfs_err_t get_err_compare(uint32_t data_remain) {
+static inline storfs_err_t get_err_compare(uint32_t      data_remain,
+                                           storfs_size_t chunk_size) {
   storfs_err_t compare = STORFS_ERR_END_OF_FILE;
-  if(data_remain > fs->pageSize) {
+  if(data_remain > chunk_size) {
     compare = STORFS_OK;
   }
 
@@ -116,6 +117,40 @@ static inline uint32_t calc_max_idx(void) {
   const uint32_t epp     = EXTENTS_PER_PAGE(fs);
   const uint32_t si_size = DIRECT_EXTENT_SIZE + epp;
   return si_size + epp * epp;
+}
+
+/*!
+ @brief Simulate IDX Advancement
+
+ @details Mirrors how get_modify_extents/snode_read_or_write_data pack bytes
+          into extents, a fresh extent is sized to exactly cover whatever is
+          left of the current write call (rounded up to whole pages), so
+          write.idx only advances once that extent's page-aligned capacity is
+          fully consumed. Chunk sizes that aren't a multiple of the page size
+          leave a partial page of slack that carries over into the next write
+          call.
+
+ @param data_size data to advance
+ @param extent_remaining the remainder of the extent before moving to the next
+                         index
+
+ @return The change in index
+ */
+static uint32_t simulate_idx_advance(uint32_t  data_size,
+                                     uint32_t *extent_remaining) {
+  uint32_t idx_delta = 0;
+  while(data_size > 0) {
+    if(!*extent_remaining) {
+      *extent_remaining = CEIL_DIV(data_size, fs->pageSize) * fs->pageSize;
+    }
+    uint32_t consumed = MIN(data_size, *extent_remaining);
+    *extent_remaining -= consumed;
+    data_size -= consumed;
+    if(!*extent_remaining) {
+      idx_delta++;
+    }
+  }
+  return idx_delta;
 }
 
 static uint8_t *
@@ -130,14 +165,17 @@ fill_snode(SNodeInst *inst, storfs_size_t *buf_size, storfs_size_t chunk_size) {
   TEST_ASSERT_EQUAL(snode_write_data(fs, inst, buf, &leftover), STORFS_OK);
   TEST_ASSERT_EQUAL(inst->write.idx, 1);
 
+  uint32_t extent_remaining = 0;
+  uint32_t write_idx        = 1;
   uint32_t i;
   for(i = leftover; i < *buf_size; i += chunk_size) {
     uint32_t     data_remain = *buf_size - i;
     uint32_t     data_size   = MIN(data_remain, chunk_size);
     storfs_err_t err         = snode_write_data(fs, inst, &buf[i], &data_size);
-    uint32_t     write_idx   = i / chunk_size + 2;
+    write_idx +=
+        simulate_idx_advance(MIN(data_remain, chunk_size), &extent_remaining);
     TEST_ASSERT_EQUAL(inst->write.idx, write_idx);
-    storfs_err_t compare = get_err_compare(data_remain);
+    storfs_err_t compare = get_err_compare(data_remain, chunk_size);
     TEST_ASSERT_EQUAL(err, compare);
   }
 
@@ -227,83 +265,97 @@ void test_snode_write(void) {
 // }
 //
 
-// void test_snode_find_location(void) {
-//   uint32_t      buf_size                   = MULTIPLE_INDIRECT_DATA_SIZE(fs);
-//   uint8_t      *write_buf                  = random_array(buf_size);
-//   storfs_page_t page                       = 17;
-//   char          name[STORFS_MAX_FILE_NAME] = FAKE_NAME;
-//   SNodeInst     inst                       = { 0 };
-//
-//   storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
-//
-//   TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE),
-//   STORFS_OK); TEST_ASSERT_EQUAL(snode_lookup(fs, page, &inst), STORFS_OK);
-//
-//   TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
-//   TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, 0), STORFS_OK);
-//
-//   uint32_t bytes = buf_size;
-//   TEST_ASSERT_EQUAL(snode_write_data(fs, &inst, write_buf, &bytes),
-//   STORFS_OK); TEST_ASSERT_EQUAL(bytes, buf_size);
-//
-//   // Test obtaining the location now, will be in indirect extents which has
-//   yet
-//   // to be created
-//   TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst),
-//   STORFS_ERR_NOT_FOUND);
-//
-//   // Erase and then fill the SNode all the way up
-//   bytes = buf_size;
-//   TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &buf_size), STORFS_OK);
-//   TEST_ASSERT_EQUAL(bytes, buf_size);
-//   TEST_ASSERT_EQUAL(inst.node.size, 0);
-//
-//   random_array_free(write_buf);
-//   storfs_size_t chunk_size = fs->pageSize;
-//   write_buf                = fill_snode(&inst, &buf_size, chunk_size);
-//
-//   // Now compare after filling
-//   uint8_t *read_buf = (uint8_t *)calloc(buf_size, sizeof(uint8_t));
-//   bytes             = buf_size;
-//   TEST_ASSERT_EQUAL(snode_read_data(fs, &inst, read_buf, &buf_size),
-//   STORFS_OK); TEST_ASSERT_EQUAL(bytes, buf_size);
-//   TEST_ASSERT_EQUAL(memcmp(write_buf, read_buf, buf_size), 0);
-//   free(read_buf);
-//   printf("Fucker: %d\n", inst.write.idx);
-//
-//   // Test obtaining the location now, will be at the very end of the SNode
-//   TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst),
-//   STORFS_ERR_NO_SPACE); TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst,
-//   buf_size),
-//                     STORFS_ERR_NO_SPACE);
-//
-//   printf("Fucker: %d\n", inst.write.idx);
-//
-//   // Test getting the data almost at the end of the file
-//   TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, buf_size - 1),
-//                     STORFS_OK);
-//
-//   TEST_ASSERT_EQUAL(snode_write_data(fs, &inst, write_buf, &buf_size),
-//                     STORFS_ERR_END_OF_FILE);
-//   printf("Fucker: %d\n", inst.write.idx);
-//   random_array_free(write_buf);
-//   printf("Fucker: %d\n", inst.write.idx);
-//   TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &buf_size), STORFS_OK);
-//   TEST_ASSERT_EQUAL(inst.node.size, 0);
-//   TEST_ASSERT_EQUAL(inst.write.idx, 0);
-//
-//   // Test improper parameters
-//   TEST_ASSERT_EQUAL(snode_find_write_location(NULL, &inst),
-//                     STORFS_ERR_NULL_POINTER);
-//   TEST_ASSERT_EQUAL(snode_find_write_location(fs, NULL),
-//                     STORFS_ERR_NULL_POINTER);
-//   TEST_ASSERT_EQUAL(snode_find_read_location(NULL, &inst, 0),
-//                     STORFS_ERR_NULL_POINTER);
-//   TEST_ASSERT_EQUAL(snode_find_read_location(fs, NULL, 0),
-//                     STORFS_ERR_NULL_POINTER);
-// }
-//
-//
+void test_snode_find_location(void) {
+  uint32_t      buf_size                   = MULTIPLE_INDIRECT_DATA_SIZE(fs);
+  uint8_t      *write_buf                  = random_array(buf_size);
+  storfs_page_t page                       = 17;
+  char          name[STORFS_MAX_FILE_NAME] = FAKE_NAME;
+  SNodeInst     inst                       = { 0 };
+
+  storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
+
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_lookup(fs, page, &inst), STORFS_OK);
+
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, 0), STORFS_OK);
+
+  uint32_t bytes = buf_size;
+  TEST_ASSERT_EQUAL(snode_write_data(fs, &inst, write_buf, &bytes), STORFS_OK);
+  TEST_ASSERT_EQUAL(bytes, buf_size);
+
+  // Test obtaining the location now, will be in indirect extents which has yet
+  // to be created
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_ERR_NOT_FOUND);
+
+  // Erase and then fill the SNode all the way up
+  bytes = buf_size;
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(bytes, buf_size);
+  TEST_ASSERT_EQUAL(inst.node.size, 0);
+
+  random_array_free(write_buf);
+  storfs_size_t chunk_size = fs->pageSize;
+  write_buf                = fill_snode(&inst, &buf_size, chunk_size);
+
+  // Now compare after filling
+  uint8_t *read_buf = (uint8_t *)calloc(buf_size, sizeof(uint8_t));
+  bytes             = buf_size;
+  TEST_ASSERT_EQUAL(snode_read_data(fs, &inst, read_buf, &buf_size),
+                    STORFS_ERR_END_OF_FILE);
+  TEST_ASSERT_EQUAL(bytes, buf_size);
+  TEST_ASSERT_EQUAL(memcmp(write_buf, read_buf, buf_size), 0);
+  free(read_buf);
+
+  // Test obtaining the location now, will be at the very end of the SNode
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_ERR_NO_SPACE);
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, buf_size),
+                    STORFS_ERR_NO_SPACE);
+
+  // Test getting the data almost at the end of the file
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, buf_size - 1),
+                    STORFS_OK);
+
+  bytes = buf_size;
+  TEST_ASSERT_EQUAL(snode_write_data(fs, &inst, write_buf, &bytes),
+                    STORFS_ERR_NO_FREE_BLOCKS);
+  random_array_free(write_buf);
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(inst.node.size, 0);
+  TEST_ASSERT_EQUAL(inst.write.idx, 0);
+
+  // Test improper parameters
+  TEST_ASSERT_EQUAL(snode_find_write_location(NULL, &inst),
+                    STORFS_ERR_NULL_POINTER);
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, NULL),
+                    STORFS_ERR_NULL_POINTER);
+  TEST_ASSERT_EQUAL(snode_find_read_location(NULL, &inst, 0),
+                    STORFS_ERR_NULL_POINTER);
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, NULL, 0),
+                    STORFS_ERR_NULL_POINTER);
+}
+
+static void
+simple_read_helper(SNodeInst *inst, uint8_t *write_buf, uint32_t write_size) {
+  // Read all data in one go
+  uint8_t *read_buf = (uint8_t *)calloc(write_size, sizeof(uint8_t));
+  uint32_t bytes    = write_size;
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, inst, 0), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_read_data(fs, inst, read_buf, &bytes),
+                    STORFS_ERR_END_OF_FILE);
+  for(uint32_t i = 0; i < write_size; i++) {
+    if(read_buf[i] != write_buf[i]) {
+      printf("MEMCMP unequal at: %d. Data values - write: %d - read: %d\n",
+             i,
+             write_buf[i],
+             read_buf[i]);
+      break;
+    }
+  }
+  TEST_ASSERT_EQUAL(memcmp(write_buf, read_buf, write_size), 0);
+  free(read_buf);
+}
+
 void test_read_after_full_write(void) {
   storfs_page_t page                       = 17;
   char          name[STORFS_MAX_FILE_NAME] = FAKE_NAME;
@@ -328,7 +380,7 @@ void test_read_after_full_write(void) {
     uint32_t     data_remain = buf_size - i;
     uint32_t     data_size   = MIN(data_remain, chunk_size);
     storfs_err_t err         = snode_read_data(fs, &inst, read_buf, &data_size);
-    storfs_err_t compare     = get_err_compare(data_remain);
+    storfs_err_t compare     = get_err_compare(data_remain, chunk_size);
     TEST_ASSERT_EQUAL(err, compare);
     TEST_ASSERT_EQUAL(memcmp(&write_buf[i], read_buf, data_size), 0);
   }
@@ -362,13 +414,71 @@ void test_read_after_full_write_update_cache(void) {
     uint32_t data_size   = MIN(data_remain, chunk_size);
     TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, i), STORFS_OK);
     storfs_err_t err     = snode_read_data(fs, &inst, read_buf, &data_size);
-    storfs_err_t compare = get_err_compare(data_remain);
+    storfs_err_t compare = get_err_compare(data_remain, chunk_size);
     TEST_ASSERT_EQUAL(err, compare);
     TEST_ASSERT_EQUAL(memcmp(&write_buf[i], read_buf, data_size), 0);
   }
+  free(read_buf);
+
+  simple_read_helper(&inst, write_buf, buf_size);
 
   random_array_free(write_buf);
-  free(read_buf);
+}
+
+void test_read_after_random_page_full_write(void) {
+  storfs_page_t page                       = 17;
+  char          name[STORFS_MAX_FILE_NAME] = FAKE_NAME;
+  SNodeInst     inst                       = { 0 };
+
+  storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
+
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_lookup(fs, page, &inst), STORFS_OK);
+
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, 0), STORFS_OK);
+
+  storfs_size_t chunk_size = fs->pageSize * 5;
+  uint32_t      buf_size;
+  uint8_t      *write_buf;
+  write_buf = fill_snode(&inst, &buf_size, chunk_size);
+  simple_read_helper(&inst, write_buf, buf_size);
+  random_array_free(write_buf);
+  snode_erase_data(fs, &inst, &buf_size);
+
+  chunk_size = fs->pageSize * 12;
+  write_buf  = fill_snode(&inst, &buf_size, chunk_size);
+  simple_read_helper(&inst, write_buf, buf_size);
+  random_array_free(write_buf);
+  snode_erase_data(fs, &inst, &buf_size);
+
+  chunk_size = (storfs_size_t)((float)fs->pageSize * 5.25);
+  write_buf  = fill_snode(&inst, &buf_size, chunk_size);
+  simple_read_helper(&inst, write_buf, buf_size);
+  random_array_free(write_buf);
+  snode_erase_data(fs, &inst, &buf_size);
+
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
+  write_buf              = NULL;
+  uint32_t     allocated = 0;
+  storfs_err_t err;
+  do {
+    chunk_size       = random_integer(8192);
+    uint32_t written = chunk_size;
+    uint32_t offset  = allocated;
+    allocated += chunk_size;
+    write_buf = realloc(write_buf, allocated);
+    err       = snode_write_data(fs, &inst, &write_buf[offset], &written);
+    printf("Allocated: %d\n", allocated);
+    if(err == STORFS_OK) {
+      TEST_ASSERT_EQUAL(written, chunk_size);
+    } else {
+      TEST_ASSERT_EQUAL(err, STORFS_ERR_END_OF_FILE);
+    }
+  } while(err == STORFS_OK);
+  simple_read_helper(&inst, write_buf, allocated);
+  random_array_free(write_buf);
+  snode_erase_data(fs, &inst, &buf_size);
 }
 
 void test_fill_stagger(void) {
@@ -393,7 +503,7 @@ void test_fill_stagger(void) {
     uint32_t idx_compare = i / chunk_size + 1;
 
     storfs_err_t err = snode_write_data(fs, &inst, &write_buf[i], &data_size);
-    storfs_err_t err_compare = get_err_compare(data_remain);
+    storfs_err_t err_compare = get_err_compare(data_remain, chunk_size);
     TEST_ASSERT_EQUAL(err, err_compare);
     TEST_ASSERT_EQUAL(inst.write.idx, idx_compare);
     // Test that finding the location is also correct
@@ -407,7 +517,7 @@ void test_fill_stagger(void) {
     uint32_t     data_remain = buf_size - i;
     uint32_t     data_size   = MIN(data_remain, chunk_size);
     storfs_err_t err         = snode_read_data(fs, &inst, read_buf, &data_size);
-    storfs_err_t compare     = get_err_compare(data_remain);
+    storfs_err_t compare     = get_err_compare(data_remain, chunk_size);
     TEST_ASSERT_EQUAL(err, compare);
     TEST_ASSERT_EQUAL(memcmp(&write_buf[i], read_buf, data_size), 0);
   }
@@ -443,9 +553,8 @@ void test_fill_boundary(void) {
     uint32_t data_remain = buf_size - i;
     uint32_t data_size   = chunk_size;
 
-    // printf("Leftover: %d\n", data_remain);
     storfs_err_t err = snode_write_data(fs, &inst, &write_buf[i], &data_size);
-    storfs_err_t err_compare = get_err_compare(data_remain);
+    storfs_err_t err_compare = get_err_compare(data_remain, chunk_size);
     TEST_ASSERT_EQUAL(err, err_compare);
 
     const uint32_t idx_compare = i / chunk_size + 2;
@@ -462,7 +571,7 @@ void test_fill_boundary(void) {
     uint32_t     data_remain = buf_size - i;
     uint32_t     data_size   = MIN(data_remain, chunk_size);
     storfs_err_t err         = snode_read_data(fs, &inst, read_buf, &data_size);
-    storfs_err_t compare     = get_err_compare(data_remain);
+    storfs_err_t compare     = get_err_compare(data_remain, chunk_size);
     TEST_ASSERT_EQUAL(err, compare);
     TEST_ASSERT_EQUAL(memcmp(&write_buf[i], read_buf, data_size), 0);
   }
@@ -492,6 +601,9 @@ void test_snode_write_read_alternate(void) {
   // Write all the data from the file, read it and compare
   SNodeInst inst_1 = { 0 };
   SNodeInst inst_2 = { 0 };
+  TEST_ASSERT_EQUAL(snode_lookup(fs, snode_1_page, &inst_1), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_lookup(fs, snode_2_page, &inst_2), STORFS_OK);
+
   TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst_1), STORFS_OK);
   TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst_1, 0), STORFS_OK);
   TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst_2), STORFS_OK);
@@ -520,8 +632,6 @@ void test_snode_write_read_alternate(void) {
   TEST_ASSERT_EQUAL(inst_1.node.size, 0);
   TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst_2, &buf_size), STORFS_OK);
   TEST_ASSERT_EQUAL(inst_2.node.size, 0);
-
-  // TODO test read here
 
   random_array_free(write_buf);
   free(read_buf);
