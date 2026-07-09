@@ -228,42 +228,45 @@ void test_snode_write(void) {
   free(read_buf);
 }
 
-// void test_snode_write_read(void) {
-//   const uint32_t buf_size  = MULTIPLE_INDIRECT_DATA_SIZE(fs);
-//   uint8_t       *write_buf = random_array(buf_size);
-//   uint8_t       *read_buf  = (uint8_t *)calloc(buf_size, sizeof(uint8_t));
-//   storfs_page_t  page      = 17;
-//   char           name[STORFS_MAX_FILE_NAME] = FAKE_NAME "123";
-//
-//   storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
-//
-//   TEST_ASSERT_EQUAL(snode_create(fs, name, &page), STORFS_OK);
-//
-//   // Write all the data from the file, read it and compare
-//   TEST_ASSERT_EQUAL(snode_write_data(fs, page, write_buf, &buf_size),
-//   STORFS_OK); TEST_ASSERT_EQUAL(snode_read_data(fs, page, 0, read_buf,
-//   &buf_size),
-//                     STORFS_OK);
-//   TEST_ASSERT_EQUAL(memcmp(write_buf, read_buf, buf_size), 0);
-//
-//   // Chunk read it to check offset paramter
-//   uint32_t chunk_size = fs->pageSize * 3;
-//   for(uint32_t i = 0; i < buf_size; i += chunk_size) {
-//     uint32_t data_remain = buf_size - i;
-//     uint32_t data_size   = MIN(data_remain, chunk_size);
-//     TEST_ASSERT_EQUAL(snode_read_data(fs, page, i, read_buf, &data_size),
-//                       STORFS_OK);
-//     TEST_ASSERT_EQUAL(memcmp(&write_buf[i], read_buf, data_size), 0);
-//   }
-//
-//   // Test reading past boundaries
-//   TEST_ASSERT_EQUAL(snode_read_data(fs, page, buf_size, read_buf&, 1),
-//                     STORFS_ERR_INVALID_PARAM);
-//
-//   random_array_free(write_buf);
-//   free(read_buf);
-// }
-//
+void test_snode_write_read(void) {
+  storfs_page_t page                       = 17;
+  char          name[STORFS_MAX_FILE_NAME] = FAKE_NAME "123";
+  SNodeInst     inst                       = { 0 };
+
+  storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
+
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_lookup(fs, page, &inst), STORFS_OK);
+
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, 0), STORFS_OK);
+
+  storfs_size_t chunk_size = fs->pageSize;
+  uint32_t      buf_size;
+  uint8_t      *write_buf;
+  write_buf = fill_snode(&inst, &buf_size, chunk_size);
+
+  // Chunk read it to check offset paramter
+  chunk_size        = fs->pageSize * 3;
+  uint8_t *read_buf = (uint8_t *)calloc(chunk_size, sizeof(uint8_t));
+  for(uint32_t i = 0; i < buf_size; i += chunk_size) {
+    uint32_t     data_remain = buf_size - i;
+    uint32_t     data_size   = MIN(data_remain, chunk_size);
+    uint32_t     data_read   = data_size;
+    storfs_err_t err         = snode_read_data(fs, &inst, read_buf, &data_read);
+    TEST_ASSERT_EQUAL(memcmp(&write_buf[i], read_buf, data_read), 0);
+    storfs_err_t compare = get_err_compare(data_remain, chunk_size);
+    TEST_ASSERT_EQUAL(err, compare);
+  }
+
+  // Test reading past boundaries
+  uint32_t data_read = chunk_size;
+  TEST_ASSERT_EQUAL(snode_read_data(fs, &inst, read_buf, &data_read),
+                    STORFS_ERR_NO_FREE_BLOCKS);
+
+  random_array_free(write_buf);
+  free(read_buf);
+}
 
 void test_snode_find_location(void) {
   uint32_t      buf_size                   = MULTIPLE_INDIRECT_DATA_SIZE(fs);
