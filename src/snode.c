@@ -736,8 +736,6 @@ static storfs_err_t snode_read_or_write_data(storfs_t         *fs,
 
   SNodeIdxCount idx = calc_snode_idx(fs);
   if(cache->idx > idx.multiple) {
-    op->bytes_remaining = 0;
-
     err = STORFS_ERR_END_OF_FILE;
   }
 

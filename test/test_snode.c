@@ -343,15 +343,6 @@ simple_read_helper(SNodeInst *inst, uint8_t *write_buf, uint32_t write_size) {
   TEST_ASSERT_EQUAL(snode_find_read_location(fs, inst, 0), STORFS_OK);
   TEST_ASSERT_EQUAL(snode_read_data(fs, inst, read_buf, &bytes),
                     STORFS_ERR_END_OF_FILE);
-  for(uint32_t i = 0; i < write_size; i++) {
-    if(read_buf[i] != write_buf[i]) {
-      printf("MEMCMP unequal at: %d. Data values - write: %d - read: %d\n",
-             i,
-             write_buf[i],
-             read_buf[i]);
-      break;
-    }
-  }
   TEST_ASSERT_EQUAL(memcmp(write_buf, read_buf, write_size), 0);
   free(read_buf);
 }
@@ -444,24 +435,30 @@ void test_read_after_random_page_full_write(void) {
   write_buf = fill_snode(&inst, &buf_size, chunk_size);
   simple_read_helper(&inst, write_buf, buf_size);
   random_array_free(write_buf);
-  snode_erase_data(fs, &inst, &buf_size);
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(inst.write.idx, 0);
 
   chunk_size = fs->pageSize * 12;
   write_buf  = fill_snode(&inst, &buf_size, chunk_size);
   simple_read_helper(&inst, write_buf, buf_size);
   random_array_free(write_buf);
-  snode_erase_data(fs, &inst, &buf_size);
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(inst.write.idx, 0);
 
+  // Offset chunk not exactly on a byte boundary
   chunk_size = (storfs_size_t)((float)fs->pageSize * 5.25);
   write_buf  = fill_snode(&inst, &buf_size, chunk_size);
   simple_read_helper(&inst, write_buf, buf_size);
   random_array_free(write_buf);
-  snode_erase_data(fs, &inst, &buf_size);
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(inst.write.idx, 0);
 
+  // Write random data to the file until it filles up
   TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
   write_buf              = NULL;
   uint32_t     allocated = 0;
   storfs_err_t err;
+  uint32_t     file_size = 0;
   do {
     chunk_size       = random_integer(8192);
     uint32_t written = chunk_size;
@@ -469,16 +466,18 @@ void test_read_after_random_page_full_write(void) {
     allocated += chunk_size;
     write_buf = realloc(write_buf, allocated);
     err       = snode_write_data(fs, &inst, &write_buf[offset], &written);
-    printf("Allocated: %d\n", allocated);
     if(err == STORFS_OK) {
       TEST_ASSERT_EQUAL(written, chunk_size);
     } else {
       TEST_ASSERT_EQUAL(err, STORFS_ERR_END_OF_FILE);
+      // The total file size is equal to the last data written
+      file_size = allocated - (chunk_size - written);
     }
   } while(err == STORFS_OK);
-  simple_read_helper(&inst, write_buf, allocated);
+  simple_read_helper(&inst, write_buf, file_size);
   random_array_free(write_buf);
-  snode_erase_data(fs, &inst, &buf_size);
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &file_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(inst.write.idx, 0);
 }
 
 void test_fill_stagger(void) {
