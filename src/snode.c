@@ -800,10 +800,6 @@ static storfs_err_t snode_perform_op(storfs_t    *fs,
                                      SNodeOpInst *op,
                                      uint8_t     *data,
                                      uint32_t    *size) {
-  if(!data && op->op != SNODE_ERASE) {
-    return STORFS_ERR_NULL_POINTER;
-  }
-
   storfs_err_t      err   = STORFS_OK;
   SNodeExtentCache *cache = &inst->write;
   if(op->op == SNODE_READ) {
@@ -872,7 +868,7 @@ storfs_err_t snode_write_data(storfs_t      *fs,
                               SNodeInst     *inst,
                               const uint8_t *data,
                               uint32_t      *size) {
-  if(!fs || !inst) {
+  if(!fs || !inst || !data || !size) {
     return STORFS_ERR_NULL_POINTER;
   }
 
@@ -901,7 +897,7 @@ storfs_err_t snode_write_data(storfs_t      *fs,
  */
 storfs_err_t
 snode_read_data(storfs_t *fs, SNodeInst *inst, uint8_t *data, uint32_t *size) {
-  if(!fs || !inst) {
+  if(!fs || !inst || !data || !size) {
     return STORFS_ERR_NULL_POINTER;
   }
 
