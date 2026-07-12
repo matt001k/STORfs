@@ -729,7 +729,8 @@ static storfs_err_t snode_read_or_write_data(storfs_t         *fs,
     pages_accessed++;
   }
 
-  if(op->bytes_remaining || cache->offset_bytes % fs->pageSize == 0) {
+  if(op->bytes_remaining ||
+     cache->offset_bytes == op->extent.count * fs->pageSize) {
     cache->idx++;
     cache->offset_bytes = 0;
   }

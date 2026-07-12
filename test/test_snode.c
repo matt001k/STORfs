@@ -456,19 +456,22 @@ void test_read_after_random_page_full_write(void) {
   TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &buf_size), STORFS_OK);
   TEST_ASSERT_EQUAL(inst.write.idx, 0);
 
-  // Write random data to the file until it filles up
+  // Write random chunk size to the file until it filles up
+  static const uint16_t random_chunk_max = 8192;
   TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
   write_buf              = NULL;
   uint32_t     allocated = 0;
   storfs_err_t err;
   uint32_t     file_size = 0;
   do {
-    chunk_size       = random_integer(8192);
-    uint32_t written = chunk_size;
-    uint32_t offset  = allocated;
+    chunk_size            = random_integer(random_chunk_max);
+    uint32_t      written = chunk_size;
+    storfs_size_t offset  = allocated;
+
     allocated += chunk_size;
     write_buf = realloc(write_buf, allocated);
-    err       = snode_write_data(fs, &inst, &write_buf[offset], &written);
+
+    err = snode_write_data(fs, &inst, &write_buf[offset], &written);
     if(err == STORFS_OK) {
       TEST_ASSERT_EQUAL(written, chunk_size);
     } else {
@@ -478,6 +481,25 @@ void test_read_after_random_page_full_write(void) {
     }
   } while(err == STORFS_OK);
   simple_read_helper(&inst, write_buf, file_size);
+
+  // Read back random chunk size
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, &inst, 0), STORFS_OK);
+  storfs_size_t offset = 0;
+  do {
+    chunk_size             = random_integer(random_chunk_max);
+    uint8_t      *read_buf = (uint8_t *)malloc(chunk_size);
+    storfs_size_t read     = chunk_size;
+    err                    = snode_read_data(fs, &inst, read_buf, &read);
+    if(err == STORFS_OK) {
+      TEST_ASSERT_EQUAL(read, chunk_size);
+    } else {
+      TEST_ASSERT_EQUAL(err, STORFS_ERR_END_OF_FILE);
+    }
+    TEST_ASSERT_EQUAL(memcmp(&write_buf[offset], read_buf, read), 0);
+    offset += read;
+    free(read_buf);
+  } while(err == STORFS_OK);
+
   random_array_free(write_buf);
   TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &file_size), STORFS_OK);
   TEST_ASSERT_EQUAL(inst.write.idx, 0);
