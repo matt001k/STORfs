@@ -155,6 +155,21 @@ static uint32_t simulate_idx_advance(uint32_t  data_size,
   return idx_delta;
 }
 
+/*!
+ @brief Fill an SNode
+
+ @details Fills a complete SNode to the last double extent with random data.
+          Will fill extents with a specified chunk size. The chunk size does
+          not have to be page aligned. Will return a pointer to the data
+          written and the total buffer size of the data. The written data must
+          be freed after use.
+
+ @param inst SNode instance to write to
+ @param buf_size the buffer size of the data written
+ @param chunk_size the size of chunks to write to the SNode.
+
+ @return Pointer to the data written to the SNode.
+ */
 static uint8_t *
 fill_snode(SNodeInst *inst, storfs_size_t *buf_size, storfs_size_t chunk_size) {
   uint32_t max = calc_max_idx();
@@ -188,6 +203,38 @@ fill_snode(SNodeInst *inst, storfs_size_t *buf_size, storfs_size_t chunk_size) {
   }
 
   return buf;
+}
+
+static void full_read_helper(SNodeInst    *inst,
+                             uint8_t      *write_buf,
+                             storfs_size_t file_size,
+                             storfs_size_t read_offset,
+                             bool          random,
+                             storfs_size_t chunk_read) {
+  TEST_ASSERT_EQUAL(snode_find_read_location(fs, inst, 0), STORFS_OK);
+  storfs_size_t offset = 0;
+  storfs_err_t  err;
+  storfs_size_t chunk_size;
+  do {
+    if(random) {
+      chunk_size = random_integer(RANDOM_DATA_MAX_CHUNK);
+    } else {
+      chunk_size = chunk_read;
+    }
+
+    uint8_t      *read_buf = (uint8_t *)malloc(chunk_size);
+    storfs_size_t read     = chunk_size;
+    err                    = snode_read_data(fs, inst, read_buf, &read);
+    if(err == STORFS_OK) {
+      TEST_ASSERT_EQUAL(read, chunk_size);
+    } else {
+      TEST_ASSERT_EQUAL(err, STORFS_ERR_END_OF_FILE);
+    }
+    bool equal = memcmp(&write_buf[offset], read_buf, read) == 0;
+    TEST_ASSERT_TRUE(equal);
+    offset += read;
+    free(read_buf);
+  } while(err == STORFS_OK);
 }
 
 void test_snode_write(void) {
@@ -230,7 +277,7 @@ void test_snode_write(void) {
   free(read_buf);
 }
 
-void test_snode_write_read(void) {
+void test_snode_read(void) {
   storfs_page_t page                       = 17;
   char          name[STORFS_MAX_FILE_NAME] = FAKE_NAME "123";
   SNodeInst     inst                       = { 0 };
@@ -264,10 +311,58 @@ void test_snode_write_read(void) {
   // Test reading past boundaries
   uint32_t data_read = chunk_size;
   TEST_ASSERT_EQUAL(snode_read_data(fs, &inst, read_buf, &data_read),
-                    STORFS_ERR_NO_FREE_BLOCKS);
+                    STORFS_ERR_END_OF_FILE);
 
   random_array_free(write_buf);
   free(read_buf);
+}
+
+void test_snode_erase(void) {
+  storfs_page_t page                       = 17;
+  char          name[STORFS_MAX_FILE_NAME] = FAKE_NAME "123";
+  SNodeInst     inst                       = { 0 };
+
+  storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
+
+  TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE), STORFS_OK);
+  TEST_ASSERT_EQUAL(snode_lookup(fs, page, &inst), STORFS_OK);
+
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
+
+  storfs_size_t chunk_size = fs->pageSize * 3;
+  uint32_t      buf_size;
+  uint8_t      *write_buf;
+  write_buf = fill_snode(&inst, &buf_size, chunk_size);
+
+  // Perform partial erase not page aligned, read back data, verify it matches
+  const uint32_t erase_sizes[] = {
+    fs->pageSize * 3 / 4,
+    fs->pageSize * 10 / 3,
+    buf_size / 2,
+  };
+
+  for(uint16_t erase = 0; erase < ARRAY_SIZE(erase_sizes); erase++) {
+    uint32_t erase_size = erase_sizes[erase];
+    uint32_t bytes      = erase_size;
+    TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &bytes), STORFS_OK);
+    TEST_ASSERT_EQUAL(bytes, erase_size);
+    buf_size -= erase_size;
+    TEST_ASSERT_EQUAL(inst.node.size, buf_size);
+    full_read_helper(&inst, write_buf, buf_size, 0, true, 0);
+  }
+
+  // Perform a read at a random offset to ensure reading to end works as
+  // expected
+  uint32_t offset = buf_size / 2;
+  full_read_helper(&inst, write_buf, buf_size, offset, true, 0);
+
+  // Erase the rest
+  uint32_t bytes = buf_size;
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &inst, &bytes), STORFS_OK);
+  TEST_ASSERT_EQUAL(bytes, buf_size);
+
+  // Test erasing random sizes
+  // write_buf = fill_snode(&inst, &buf_size, chunk_size);
 }
 
 void test_snode_find_location(void) {
@@ -338,37 +433,6 @@ void test_snode_find_location(void) {
                     STORFS_ERR_NULL_POINTER);
   TEST_ASSERT_EQUAL(snode_find_read_location(fs, NULL, 0),
                     STORFS_ERR_NULL_POINTER);
-}
-
-static void full_read_helper(SNodeInst    *inst,
-                             uint8_t      *write_buf,
-                             storfs_size_t file_size,
-                             storfs_size_t read_offset,
-                             bool          random,
-                             storfs_size_t chunk_read) {
-  TEST_ASSERT_EQUAL(snode_find_read_location(fs, inst, 0), STORFS_OK);
-  storfs_size_t offset = 0;
-  storfs_err_t  err;
-  storfs_size_t chunk_size;
-  do {
-    if(random) {
-      chunk_size = random_integer(RANDOM_DATA_MAX_CHUNK);
-    } else {
-      chunk_size = chunk_read;
-    }
-
-    uint8_t      *read_buf = (uint8_t *)malloc(chunk_size);
-    storfs_size_t read     = chunk_size;
-    err                    = snode_read_data(fs, inst, read_buf, &read);
-    if(err == STORFS_OK) {
-      TEST_ASSERT_EQUAL(read, chunk_size);
-    } else {
-      TEST_ASSERT_EQUAL(err, STORFS_ERR_END_OF_FILE);
-    }
-    TEST_ASSERT_EQUAL(memcmp(&write_buf[offset], read_buf, read), 0);
-    offset += read;
-    free(read_buf);
-  } while(err == STORFS_OK);
 }
 
 void test_snode_misaligned_read(void) {
