@@ -45,8 +45,9 @@ typedef struct {
 } SNode;
 
 typedef struct {
-  uint32_t offset_bytes;
-  uint32_t idx;
+  storfs_size_t processed_bytes;
+  uint32_t      offset_bytes;
+  uint32_t      idx;
 } SNodeExtentCache;
 
 typedef struct {
