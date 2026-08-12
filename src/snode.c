@@ -466,11 +466,11 @@ static storfs_err_t process_direct_extents(storfs_t        *fs,
   extent->start    = direct_extent->start;
   extent->count    = direct_extent->count;
 
-  if(!op->is_boundary) {
-    return STORFS_OK;
-  }
-
   if(op->op == SNODE_WRITE) {
+    if(!op->is_boundary) {
+      return STORFS_OK;
+    }
+
     uint32_t max = CALC_CONTIGUOUS_MAX(fs, op);
     err = bitmap_alloc_contiguous(fs, &extent->start, &extent->count, max);
     if(err != STORFS_OK) {
@@ -765,6 +765,9 @@ static storfs_err_t erase_data(storfs_t         *fs,
 
   if(pages_erased) {
     err = bitmap_free_contiguous(fs, page_start, &pages_erased, pages_erased);
+    if(err != STORFS_OK) {
+      return err;
+    }
   }
 
   uint32_t bytes_erased = pages_erased * fs->pageSize;
@@ -778,11 +781,11 @@ static storfs_err_t erase_data(storfs_t         *fs,
       goto finish;
     }
 
-    uint32_t page_capacity = (inst->page == page_start)
-                                 ? fs->pageSize - sizeof(SNode)
-                                 : fs->pageSize;
-    uint32_t page_offset   = page_capacity - erase_bytes_offset;
-    memset(&fs->working_buf[page_offset], 0, op->bytes_remaining);
+    uint32_t page_capacity =
+        !cache->idx ? fs->pageSize - sizeof(SNode) : fs->pageSize;
+    uint32_t page_offset = page_capacity - erase_bytes_offset;
+    uint32_t trim_bytes = MIN(op->bytes_remaining, page_capacity - page_offset);
+    memset(&fs->working_buf[page_offset], 0, trim_bytes);
     err = atomic_write(fs, page_start);
     if(err != STORFS_OK) {
       goto finish;
@@ -793,12 +796,12 @@ static storfs_err_t erase_data(storfs_t         *fs,
   cache->processed_bytes -= bytes_erased;
 
 finish:
-  if(err != STORFS_OK || !op->bytes_remaining) {
-    cache->offset_bytes = op->extent.count * fs->pageSize - bytes_erased;
-  } else if(op->bytes_remaining ||
-            cache->offset_bytes == op->extent.count * fs->pageSize) {
+  bool erased_full_extent = bytes_erased == op->extent.count * fs->pageSize;
+  if(op->bytes_remaining || erased_full_extent) {
     cache->idx          = cache->idx ? cache->idx - 1 : 0;
     cache->offset_bytes = 0;
+  } else if(err != STORFS_OK || !op->bytes_remaining) {
+    cache->offset_bytes = op->extent.count * fs->pageSize - bytes_erased;
   }
 
   return err;
@@ -955,7 +958,7 @@ storfs_err_t snode_erase_data(storfs_t *fs, SNodeInst *inst, uint32_t *size) {
 
   // Do not erase past end of an snode
   if(*size > inst->node.size) {
-    return STORFS_ERR_INVALID_PARAM;
+    *size = inst->node.size;
   }
 
   if(inst->write.idx > idx.multiple) {

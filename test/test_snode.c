@@ -179,6 +179,7 @@ fill_snode(SNodeInst *inst, storfs_size_t *buf_size, storfs_size_t chunk_size) {
   *buf_size += leftover;
   uint8_t *buf = random_array(*buf_size);
 
+  TEST_ASSERT_EQUAL(snode_find_write_location(fs, inst), STORFS_OK);
   TEST_ASSERT_EQUAL(snode_write_data(fs, inst, buf, &leftover), STORFS_OK);
   TEST_ASSERT_EQUAL(inst->write.idx, 1);
 
@@ -327,8 +328,6 @@ void test_snode_erase(void) {
   TEST_ASSERT_EQUAL(snode_create(fs, name, &page, SNODE_TYPE_FILE), STORFS_OK);
   TEST_ASSERT_EQUAL(snode_lookup(fs, page, &inst), STORFS_OK);
 
-  TEST_ASSERT_EQUAL(snode_find_write_location(fs, &inst), STORFS_OK);
-
   storfs_size_t chunk_size = fs->pageSize * 3;
   uint32_t      buf_size;
   uint8_t      *write_buf;
@@ -339,6 +338,7 @@ void test_snode_erase(void) {
     fs->pageSize * 3 / 4,
     fs->pageSize * 10 / 3,
     buf_size / 2,
+    612,
   };
 
   for(uint16_t erase = 0; erase < ARRAY_SIZE(erase_sizes); erase++) {
@@ -362,7 +362,23 @@ void test_snode_erase(void) {
   TEST_ASSERT_EQUAL(bytes, buf_size);
 
   // Test erasing random sizes
-  // write_buf = fill_snode(&inst, &buf_size, chunk_size);
+  write_buf = fill_snode(&inst, &buf_size, chunk_size);
+  storfs_err_t err;
+  uint32_t     i = 0;
+  do {
+    chunk_size = random_integer(RANDOM_DATA_MAX_CHUNK);
+
+    storfs_size_t erased = chunk_size;
+    err                  = snode_erase_data(fs, &inst, &erased);
+    printf("Erased: %d %d\n", erased, chunk_size);
+    printf("Error: %d\n", i++);
+    TEST_ASSERT_EQUAL(err, STORFS_OK);
+    buf_size -= erased;
+    TEST_ASSERT_EQUAL(inst.node.size, buf_size);
+    if(i % 256) {
+      // full_read_helper(&inst, write_buf, buf_size, 0, true, 0);
+    }
+  } while(inst.node.size && err == STORFS_OK);
 }
 
 void test_snode_find_location(void) {
