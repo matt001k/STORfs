@@ -35,6 +35,17 @@ typedef struct {
   storfs_size_t multiple;
 } SNodeIdxCount;
 
+typedef storfs_err_t (*ProcessExtentCb)(storfs_t        *fs,
+                                        SNodeInst       *inst,
+                                        SNodeOpInst     *op,
+                                        SNodeExtentCache cache);
+
+typedef struct {
+  ProcessExtentCb direct;
+  ProcessExtentCb single;
+  ProcessExtentCb multiple;
+} SNodeHandleExtentCbs;
+
 static storfs_err_t snode_alloc_new_page(storfs_t *fs, storfs_page_t *page) {
   storfs_err_t err = bitmap_alloc(fs, page);
   if(err != STORFS_OK) {
@@ -637,8 +648,10 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
   return err;
 }
 
-static storfs_err_t
-get_modify_extents(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
+static storfs_err_t get_modify_extents(storfs_t            *fs,
+                                       SNodeInst           *inst,
+                                       SNodeOpInst         *op,
+                                       SNodeHandleExtentCbs cbs) {
   SNodeExtentCache extent_cache;
   SNodeIdxCount    idx = calc_snode_idx(fs);
 
@@ -667,11 +680,11 @@ get_modify_extents(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
   op->is_boundary = !extent_cache.offset_bytes;
 
   if(extent_cache.idx < DIRECT_EXTENT_SIZE) {
-    return process_direct_extents(fs, inst, op, extent_cache);
+    return cbs.direct(fs, inst, op, extent_cache);
   } else if(extent_cache.idx < idx.single) {
-    return process_indirect_extents(fs, inst, op, extent_cache);
+    return cbs.single(fs, inst, op, extent_cache);
   } else if(extent_cache.idx < idx.multiple) {
-    return process_multiple_extents(fs, inst, op, extent_cache);
+    return cbs.multiple(fs, inst, op, extent_cache);
   }
 
   return STORFS_ERR_NO_FREE_BLOCKS;
@@ -773,7 +786,7 @@ static storfs_err_t erase_data(storfs_t         *fs,
   uint32_t bytes_erased = pages_erased * fs->pageSize;
   op->bytes_remaining -= bytes_erased;
 
-  // Is there a partial erase needed for this extent?
+  // Is there a partial page erase needed for this extent?
   if(err == STORFS_OK && erase_bytes_offset &&
      pages_erased < op->extent.count) {
     err = atomic_read(fs, page_start);
@@ -818,8 +831,13 @@ static storfs_err_t snode_perform_op(storfs_t    *fs,
     cache = &inst->read;
   }
 
+  const SNodeHandleExtentCbs cbs = {
+    process_direct_extents,
+    process_indirect_extents,
+    process_multiple_extents,
+  };
   while(err == STORFS_OK && op->bytes_remaining) {
-    err = get_modify_extents(fs, inst, op);
+    err = get_modify_extents(fs, inst, op, cbs);
     if(err != STORFS_OK) {
       break;
     }
