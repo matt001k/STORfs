@@ -370,13 +370,11 @@ void test_snode_erase(void) {
 
     storfs_size_t erased = chunk_size;
     err                  = snode_erase_data(fs, &inst, &erased);
-    printf("Erased: %d %d\n", erased, chunk_size);
-    printf("Error: %d\n", i++);
     TEST_ASSERT_EQUAL(err, STORFS_OK);
     buf_size -= erased;
     TEST_ASSERT_EQUAL(inst.node.size, buf_size);
     if(i % 256) {
-      // full_read_helper(&inst, write_buf, buf_size, 0, true, 0);
+      full_read_helper(&inst, write_buf, buf_size, 0, true, 0);
     }
   } while(inst.node.size && err == STORFS_OK);
 }
