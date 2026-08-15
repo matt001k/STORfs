@@ -87,6 +87,22 @@ static inline SNodeIdxCount calc_snode_idx(const storfs_t *fs) {
   };
 }
 
+static inline storfs_size_t calc_single_idx(storfs_size_t idx) {
+  return idx - DIRECT_EXTENT_SIZE;
+}
+
+typedef struct {
+  storfs_size_t indirect;
+  storfs_size_t multiple;
+} SNodeMultipleIdx;
+static inline SNodeMultipleIdx calc_multiple_idx(const storfs_t *fs,
+                                                 storfs_size_t   idx) {
+  SNodeIdxCount  count = calc_snode_idx(fs);
+  const uint32_t epp   = EXTENTS_PER_PAGE(fs);
+  return (SNodeMultipleIdx){ (idx - count.single) % epp,
+                             (idx - count.single) / epp };
+}
+
 /*!
  @brief Create an snode
 
@@ -427,7 +443,7 @@ static storfs_err_t process_extent_pages(storfs_t        *fs,
       if(!op->is_boundary) {
         op->extent.start = indirect_extent->start;
         op->extent.count = indirect_extent->count;
-        // We don't want to update the idirect page here
+        // We don't want to update the indirect page here
         return STORFS_OK;
       }
       indirect_extent->start = op->extent.start;
@@ -458,23 +474,6 @@ static storfs_err_t process_direct_extents(storfs_t        *fs,
   extent->start    = direct_extent->start;
   extent->count    = direct_extent->count;
 
-  if(op->op == SNODE_WRITE) {
-    if(!op->is_boundary) {
-      return STORFS_OK;
-    }
-
-    uint32_t max = CALC_CONTIGUOUS_MAX(fs, op);
-    err = bitmap_alloc_contiguous(fs, &extent->start, &extent->count, max);
-    if(err != STORFS_OK) {
-      return err;
-    }
-
-    direct_extent->start = extent->start;
-    direct_extent->count = extent->count;
-
-    err = snode_update(fs, node, inst->page);
-  }
-
   return err;
 }
 
@@ -484,9 +483,9 @@ static storfs_err_t process_indirect_extents(storfs_t        *fs,
                                              SNodeExtentCache cache,
                                              void            *arg) {
   (void)arg;
-  SNode       *node                       = &inst->node;
-  uint32_t     single_indirect_extent_idx = cache.idx - DIRECT_EXTENT_SIZE;
-  storfs_err_t err                        = STORFS_OK;
+  SNode       *node = &inst->node;
+  uint32_t     idx  = calc_single_idx(cache.idx);
+  storfs_err_t err  = STORFS_OK;
 
   if(op->op == SNODE_WRITE && !node->indirect.single) {
     err = snode_alloc_indirect_page(fs, inst, &node->indirect.single);
@@ -499,11 +498,7 @@ static storfs_err_t process_indirect_extents(storfs_t        *fs,
     return STORFS_ERR_NOT_FOUND;
   }
 
-  return process_extent_pages(fs,
-                              op,
-                              single_indirect_extent_idx,
-                              &node->indirect.single,
-                              cache);
+  return process_extent_pages(fs, op, idx, &node->indirect.single, cache);
 }
 
 static storfs_err_t process_multiple_extents(storfs_t        *fs,
@@ -512,10 +507,9 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
                                              SNodeExtentCache cache,
                                              void            *arg) {
   (void)arg;
-  storfs_err_t   err     = STORFS_OK;
-  SNode         *node    = &inst->node;
-  const uint32_t epp     = EXTENTS_PER_PAGE(fs);
-  const uint32_t si_size = DIRECT_EXTENT_SIZE + epp;
+  storfs_err_t     err  = STORFS_OK;
+  SNode           *node = &inst->node;
+  SNodeMultipleIdx idx  = calc_multiple_idx(fs, cache.idx);
 
   if(op->op == SNODE_WRITE && !node->indirect.multiple) {
     err = snode_alloc_indirect_page(fs, inst, &node->indirect.multiple);
@@ -528,15 +522,14 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     return STORFS_ERR_NOT_FOUND;
   }
 
-  uint32_t single_indirect_page_idx = (cache.idx - si_size) / epp;
-  err                               = atomic_read(fs, node->indirect.multiple);
+  err = atomic_read(fs, node->indirect.multiple);
   if(err != STORFS_OK) {
     return err;
   }
 
   SNodeMultiple *multiple_extents = (SNodeMultiple *)fs->working_buf;
   storfs_page_t  single_indirect_page =
-      multiple_extents[single_indirect_page_idx].single_location;
+      multiple_extents[idx.multiple].single_location;
   if(op->op == SNODE_WRITE && !single_indirect_page) {
     err = snode_alloc_new_page(fs, &single_indirect_page);
     if(err != STORFS_OK) {
@@ -550,8 +543,7 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     }
 
     multiple_extents = (SNodeMultiple *)fs->working_buf;
-    multiple_extents[single_indirect_page_idx].single_location =
-        single_indirect_page;
+    multiple_extents[idx.multiple].single_location = single_indirect_page;
 
     err = atomic_write(fs, node->indirect.multiple);
     if(err != STORFS_OK) {
@@ -559,14 +551,10 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     }
   }
 
-  uint32_t      single_indirect_extent_idx = (cache.idx - si_size) % epp;
-  storfs_page_t init_single_indirect       = single_indirect_page;
+  storfs_page_t init_single_indirect = single_indirect_page;
 
-  err = process_extent_pages(fs,
-                             op,
-                             single_indirect_extent_idx,
-                             &single_indirect_page,
-                             cache);
+  err =
+      process_extent_pages(fs, op, idx.indirect, &single_indirect_page, cache);
   if(err != STORFS_OK) {
     return err;
   }
@@ -578,7 +566,7 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
     }
 
     multiple_extents        = (SNodeMultiple *)fs->working_buf;
-    SNodeMultiple *multiple = &multiple_extents[single_indirect_page_idx];
+    SNodeMultiple *multiple = &multiple_extents[idx.multiple];
     if(op->op == SNODE_WRITE) {
       multiple->total += op->extent.count;
     }
@@ -634,16 +622,71 @@ static storfs_err_t get_modify_extents(storfs_t            *fs,
   return STORFS_ERR_NO_FREE_BLOCKS;
 }
 
-static storfs_err_t snode_read_or_write_data(storfs_t         *fs,
-                                             SNodeOpInst      *op,
-                                             uint8_t          *data,
-                                             uint32_t          size,
-                                             SNodeExtentCache *cache) {
+static storfs_err_t create_direct_extent(storfs_t        *fs,
+                                         SNodeInst       *inst,
+                                         SNodeOpInst     *op,
+                                         SNodeExtentCache cache,
+                                         void            *arg) {
+  if(!op->is_boundary) {
+    return STORFS_OK;
+  }
+
+  SNode       *node          = &inst->node;
+  SNodeExtent *extent        = &op->extent;
+  SNodeExtent *direct_extent = &node->direct[cache.idx];
+  uint32_t     max           = CALC_CONTIGUOUS_MAX(fs, op);
+  storfs_err_t err =
+      bitmap_alloc_contiguous(fs, &extent->start, &extent->count, max);
+  if(err != STORFS_OK) {
+    return err;
+  }
+
+  direct_extent->start = extent->start;
+  direct_extent->count = extent->count;
+
+  return snode_update(fs, node, inst->page);
+}
+
+static storfs_err_t create_indirect_extent(storfs_t        *fs,
+                                           SNodeInst       *inst,
+                                           SNodeOpInst     *op,
+                                           SNodeExtentCache cache,
+                                           void            *arg) {
+  return STORFS_OK;
+}
+static storfs_err_t create_multiple_extent(storfs_t        *fs,
+                                           SNodeInst       *inst,
+                                           SNodeOpInst     *op,
+                                           SNodeExtentCache cache,
+                                           void            *arg) {
+  return STORFS_OK;
+}
+
+static storfs_err_t snode_read_or_write_data(storfs_t    *fs,
+                                             SNodeInst   *inst,
+                                             SNodeOpInst *op,
+                                             uint8_t     *data,
+                                             uint32_t     size) {
+  SNodeExtent      *extent = &op->extent;
+  SNodeExtentCache *cache  = op->op == SNODE_WRITE ? &inst->write : &inst->read;
+  storfs_err_t      err;
+  if(!extent->start && !extent->count) {
+    const SNodeHandleExtentCbs cbs = {
+      create_direct_extent,
+      create_indirect_extent,
+      create_multiple_extent,
+    };
+    err = get_modify_extents(fs, inst, op, cbs, NULL);
+    if(err != STORFS_OK) {
+      return err;
+    }
+  }
+
   storfs_loc_t location;
   location.pageLoc = op->extent.start + cache->offset_bytes / fs->pageSize;
   location.byteLoc = cache->offset_bytes % fs->pageSize;
 
-  storfs_err_t err = atomic_read(fs, location.pageLoc);
+  err = atomic_read(fs, location.pageLoc);
   if(err != STORFS_OK) {
     return err;
   }
@@ -765,16 +808,13 @@ static storfs_err_t erase_indirect_extent(storfs_t        *fs,
                                           SNodeExtentCache cache,
                                           void            *arg) {
   SNode        *node         = &inst->node;
-  uint32_t      indirect_idx = cache.idx - DIRECT_EXTENT_SIZE;
+  uint32_t      idx          = calc_single_idx(cache.idx);
   storfs_size_t bytes_erased = *(storfs_size_t *)arg;
   SNodeExtent   extent;
 
   storfs_page_t original_single = node->indirect.single;
-  storfs_err_t  err             = erase_indirect(fs,
-                                    &extent,
-                                    indirect_idx,
-                                    bytes_erased,
-                                    &node->indirect.single);
+  storfs_err_t  err =
+      erase_indirect(fs, &extent, idx, bytes_erased, &node->indirect.single);
   if(err != STORFS_OK) {
     return err;
   }
@@ -791,24 +831,21 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
                                           SNodeOpInst     *op,
                                           SNodeExtentCache cache,
                                           void            *arg) {
-  const uint32_t epp          = EXTENTS_PER_PAGE(fs);
-  SNode         *node         = &inst->node;
-  SNodeIdxCount  idx          = calc_snode_idx(fs);
-  storfs_size_t  indirect_idx = (cache.idx - idx.single) % epp;
-  storfs_size_t  multiple_idx = (cache.idx - idx.single) / epp;
-  storfs_size_t  bytes_erased = *(storfs_size_t *)arg;
+  SNode           *node         = &inst->node;
+  storfs_size_t    bytes_erased = *(storfs_size_t *)arg;
+  SNodeMultipleIdx idx          = calc_multiple_idx(fs, cache.idx);
 
   storfs_err_t err = atomic_read(fs, node->indirect.multiple);
   if(err != STORFS_OK) {
     return err;
   }
-  SNodeMultiple *multiple = &((SNodeMultiple *)fs->working_buf)[multiple_idx];
+  SNodeMultiple *multiple = &((SNodeMultiple *)fs->working_buf)[idx.multiple];
   storfs_page_t  single_location = multiple->single_location;
   SNodeExtent    extent;
 
   err = erase_indirect(fs,
                        &extent,
-                       indirect_idx,
+                       idx.indirect,
                        bytes_erased,
                        &multiple->single_location);
   if(err != STORFS_OK) {
@@ -816,7 +853,7 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
   }
 
   // Safe to free single-indirect page now that parent is on flash
-  if(!extent.start && !indirect_idx) {
+  if(!extent.start && !idx.indirect) {
     err = bitmap_alloc_page(fs, single_location, PAGE_FREE);
     if(err != STORFS_OK) {
       return err;
@@ -827,7 +864,7 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
   if(err != STORFS_OK) {
     return err;
   }
-  multiple = &((SNodeMultiple *)fs->working_buf)[multiple_idx];
+  multiple = &((SNodeMultiple *)fs->working_buf)[idx.multiple];
   multiple->total -= bytes_erased / fs->pageSize;
   if(!multiple->total) {
     multiple->single_location = 0;
@@ -837,7 +874,7 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
     return err;
   }
   // If the first multiple extent is empty, free it
-  if(!multiple_idx && !multiple->single_location) {
+  if(!idx.multiple && !multiple->single_location) {
     storfs_page_t init_multiple_indirect = node->indirect.multiple;
     node->indirect.multiple              = 0;
     err = erase_snode_indirect_page(fs, inst, init_multiple_indirect);
@@ -846,15 +883,13 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
   return err;
 }
 
-static storfs_err_t erase_data(storfs_t         *fs,
-                               SNodeInst        *inst,
-                               SNodeOpInst      *op,
-                               SNodeExtentCache *cache) {
-  storfs_err_t  err          = STORFS_OK;
-  storfs_page_t freed        = calculate_freed(fs, &op->extent, op, *cache);
-  uint32_t      page_start   = op->extent.start + op->extent.count - freed;
-  uint32_t      pages_erased = freed;
-  uint32_t      erase_bytes_offset = op->bytes_remaining % fs->pageSize;
+static storfs_err_t erase_data(storfs_t *fs, SNodeInst *inst, SNodeOpInst *op) {
+  storfs_err_t      err          = STORFS_OK;
+  SNodeExtentCache *cache        = &inst->write;
+  storfs_page_t     freed        = calculate_freed(fs, &op->extent, op, *cache);
+  uint32_t          page_start   = op->extent.start + op->extent.count - freed;
+  uint32_t          pages_erased = freed;
+  uint32_t          erase_bytes_offset = op->bytes_remaining % fs->pageSize;
 
   if(pages_erased) {
     err = bitmap_free_contiguous(fs, page_start, &pages_erased, pages_erased);
@@ -916,11 +951,7 @@ static storfs_err_t snode_perform_op(storfs_t    *fs,
                                      SNodeOpInst *op,
                                      uint8_t     *data,
                                      uint32_t    *size) {
-  storfs_err_t      err   = STORFS_OK;
-  SNodeExtentCache *cache = &inst->write;
-  if(op->op == SNODE_READ) {
-    cache = &inst->read;
-  }
+  storfs_err_t err = STORFS_OK;
 
   const SNodeHandleExtentCbs cbs = {
     process_direct_extents,
@@ -934,9 +965,9 @@ static storfs_err_t snode_perform_op(storfs_t    *fs,
     }
 
     if(op->op != SNODE_ERASE) {
-      err = snode_read_or_write_data(fs, op, data, *size, cache);
+      err = snode_read_or_write_data(fs, inst, op, data, *size);
     } else {
-      err = erase_data(fs, inst, op, cache);
+      err = erase_data(fs, inst, op);
     }
   }
 
