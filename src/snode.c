@@ -5,6 +5,7 @@
 #include "common.h"
 #include "crc.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #define INLINE_DATA_SIZE(f)       (f->pageSize - sizeof(SNode))
@@ -386,17 +387,6 @@ static inline storfs_page_t calculate_freed(const storfs_t    *fs,
   storfs_page_t pages_remaining = bytes_remaining / fs->pageSize;
 
   return bytes_remaining > extent_bytes ? extent->count : pages_remaining;
-}
-
-static inline void erase_decrement_extent(const storfs_t    *fs,
-                                          SNodeExtent       *extent,
-                                          const SNodeOpInst *op,
-                                          SNodeExtentCache   cache) {
-  // Decrement extent count by the number of pages contiguously freed
-  extent->count -= calculate_freed(fs, extent, op, cache);
-  if(!extent->count) {
-    extent->start = 0;
-  }
 }
 
 static storfs_err_t
@@ -814,6 +804,30 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
   }
   SNodeMultiple *multiple = &((SNodeMultiple *)fs->working_buf)[multiple_idx];
   storfs_page_t  single_location = multiple->single_location;
+  SNodeExtent    extent;
+
+  err = erase_indirect(fs,
+                       &extent,
+                       indirect_idx,
+                       bytes_erased,
+                       &multiple->single_location);
+  if(err != STORFS_OK) {
+    return err;
+  }
+
+  // Safe to free single-indirect page now that parent is on flash
+  if(!extent.start && !indirect_idx) {
+    err = bitmap_alloc_page(fs, single_location, PAGE_FREE);
+    if(err != STORFS_OK) {
+      return err;
+    }
+  }
+
+  err = atomic_read(fs, node->indirect.multiple);
+  if(err != STORFS_OK) {
+    return err;
+  }
+  multiple = &((SNodeMultiple *)fs->working_buf)[multiple_idx];
   multiple->total -= bytes_erased / fs->pageSize;
   if(!multiple->total) {
     multiple->single_location = 0;
@@ -822,28 +836,8 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
   if(err != STORFS_OK) {
     return err;
   }
-
-  // Save state if multiple is empty
-  bool          multiple_empty  = !multiple->single_location;
-  storfs_page_t original_single = single_location;
-  SNodeExtent   extent;
-
-  err =
-      erase_indirect(fs, &extent, indirect_idx, bytes_erased, &single_location);
-  if(err != STORFS_OK) {
-    return err;
-  }
-
-  // Safe to free single-indirect page now that parent is on flash
-  if(!extent.start && !indirect_idx) {
-    err = bitmap_alloc_page(fs, original_single, PAGE_FREE);
-    if(err != STORFS_OK) {
-      return err;
-    }
-  }
-
   // If the first multiple extent is empty, free it
-  if(!multiple_idx && multiple_empty) {
+  if(!multiple_idx && !multiple->single_location) {
     storfs_page_t init_multiple_indirect = node->indirect.multiple;
     node->indirect.multiple              = 0;
     err = erase_snode_indirect_page(fs, inst, init_multiple_indirect);
@@ -870,8 +864,6 @@ static storfs_err_t erase_data(storfs_t         *fs,
   }
 
   uint32_t bytes_erased = pages_erased * fs->pageSize;
-  op->bytes_remaining -= bytes_erased;
-
   if(bytes_erased) {
     const SNodeHandleExtentCbs cbs = {
       erase_direct_extent,
@@ -883,6 +875,7 @@ static storfs_err_t erase_data(storfs_t         *fs,
       return err;
     }
   }
+  op->bytes_remaining -= bytes_erased;
 
   // Is there a partial page erase needed for this extent?
   if(err == STORFS_OK && erase_bytes_offset &&
