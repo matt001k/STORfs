@@ -657,9 +657,7 @@ static storfs_err_t create_multiple_extent(storfs_t        *fs,
 
   multiple_extents        = (SNodeMultiple *)fs->working_buf;
   SNodeMultiple *multiple = &multiple_extents[idx.multiple];
-  if(op->op == SNODE_WRITE) {
-    multiple->total += op->extent.count;
-  }
+  multiple->total += op->extent.count;
   return atomic_write(fs, node->indirect.multiple);
 }
 
