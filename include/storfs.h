@@ -124,6 +124,7 @@ typedef enum {
   STORFS_ERR_NO_SPACE            = 10,
   STORFS_ERR_NO_FREE_BLOCKS      = 11,
   STORFS_ERR_TOO_MANY_OPEN_FILES = 12,
+  STORFS_ERR_END_OF_FILE         = 13,
 
   // I/O errors
   STORFS_ERR_IO            = 20,
