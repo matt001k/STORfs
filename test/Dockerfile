@@ -22,7 +22,7 @@ RUN apt install --no-install-recommends -y \
     bison \
     doxygen \
     astyle
-RUN gem install ceedling
+RUN gem install ceedling --no-document
 RUN pip3 install --break-system-packages gcovr==8.4
 
 COPY ./run.sh /run.sh
