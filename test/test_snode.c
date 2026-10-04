@@ -119,7 +119,6 @@ static inline storfs_err_t get_err_compare(uint32_t      data_remain,
 }
 
 static inline uint32_t calc_max_idx(void) {
-#define EXTENTS_PER_PAGE(f) (((f)->pageSize / sizeof(SNodeExtent)))
   const uint32_t epp     = EXTENTS_PER_PAGE(fs);
   const uint32_t si_size = DIRECT_EXTENT_SIZE + epp;
   return si_size + epp * epp;
@@ -527,14 +526,6 @@ simple_read_helper(SNodeInst *inst, uint8_t *write_buf, uint32_t write_size) {
   TEST_ASSERT_EQUAL(snode_find_read_location(fs, inst, 0), STORFS_OK);
   TEST_ASSERT_EQUAL(snode_read_data(fs, inst, read_buf, &bytes),
                     STORFS_ERR_END_OF_FILE);
-  for(size_t i = 0; i < write_size; i++) {
-    if(write_buf[i] != read_buf[i]) {
-      printf("Failed to compare buffer at offset: %d [0x%X, 0x%X]\n",
-             i,
-             write_buf[i],
-             read_buf[i]);
-    }
-  }
   TEST_ASSERT_EQUAL(memcmp(write_buf, read_buf, write_size), 0);
   free(read_buf);
 }
@@ -782,13 +773,13 @@ void test_fill_boundary(void) {
 }
 
 void test_snode_write_read_alternate(void) {
-  const uint32_t buf_size     = MULTIPLE_INDIRECT_DATA_SIZE(fs);
-  uint8_t       *write_buf    = random_array(buf_size);
-  uint8_t       *read_buf     = (uint8_t *)calloc(buf_size, sizeof(uint8_t));
-  storfs_page_t  snode_1_page = 17;
-  storfs_page_t  snode_2_page = snode_1_page++;
-  char           snode_1_name[STORFS_MAX_FILE_NAME] = FAKE_NAME "snode_1";
-  char           snode_2_name[STORFS_MAX_FILE_NAME] = FAKE_NAME "snode_1";
+  uint32_t      buf_size     = MULTIPLE_INDIRECT_DATA_SIZE(fs);
+  uint8_t      *write_buf    = random_array(buf_size);
+  uint8_t      *read_buf     = (uint8_t *)calloc(buf_size, sizeof(uint8_t));
+  storfs_page_t snode_1_page = 17;
+  storfs_page_t snode_2_page = snode_1_page++;
+  char          snode_1_name[STORFS_MAX_FILE_NAME] = FAKE_NAME "snode_1";
+  char          snode_2_name[STORFS_MAX_FILE_NAME] = FAKE_NAME "snode_1";
 
   storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
 

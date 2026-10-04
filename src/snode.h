@@ -8,7 +8,7 @@
 
 #define SNODE_TOTAL_SIZE 128
 
-#define SNODE_INFO_SIZE 64
+#define SNODE_INFO_SIZE 60
 #define SNODE_RESERVED_SIZE                                                    \
   (SNODE_TOTAL_SIZE - STORFS_MAX_FILE_NAME - SNODE_INFO_SIZE)
 
@@ -32,10 +32,9 @@ typedef struct {
 } SNodeExtent;
 
 typedef struct {
-  uint64_t      modified_time;
-  uint64_t      size;
-  storfs_page_t extent_idx;
-  SNodeExtent   direct[DIRECT_EXTENT_SIZE];
+  uint64_t    modified_time;
+  uint64_t    size;
+  SNodeExtent direct[DIRECT_EXTENT_SIZE];
   struct {
     storfs_page_t single;
     storfs_page_t multiple;
