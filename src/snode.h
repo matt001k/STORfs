@@ -127,6 +127,7 @@ typedef struct {
   storfs_size_t multiple;
 } SNodeMultipleIdx;
 
+storfs_err_t snode_alloc_new_page(storfs_t *fs, storfs_page_t *page);
 storfs_err_t snode_update(storfs_t *fs, SNode *node, storfs_page_t page);
 
 storfs_err_t get_modify_extents(storfs_t            *fs,

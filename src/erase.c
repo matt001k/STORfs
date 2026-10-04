@@ -243,7 +243,7 @@ static storfs_err_t erase_data(storfs_t    *fs,
           of the snode. The cache write location will be updated with each
           erase.
 
- @param fs pointer to the filesystem i18786nstance
+ @param fs pointer to the filesystem instance
  @param inst pointer to snode instance
  @param size size of data to erase from the snode, the number of bytes erased
              are written here
