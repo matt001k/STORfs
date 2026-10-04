@@ -99,11 +99,10 @@ static storfs_err_t process_direct_extents(storfs_t        *fs,
   SNodeExtent *extent        = &op->extent;
   SNodeExtent *direct_extent = &node->direct[cache.idx];
 
-  storfs_err_t err = STORFS_OK;
-  extent->start    = direct_extent->start;
-  extent->count    = direct_extent->count;
+  extent->start = direct_extent->start;
+  extent->count = direct_extent->count;
 
-  return err;
+  return STORFS_OK;
 }
 
 static storfs_err_t process_indirect_extents(storfs_t        *fs,
@@ -112,9 +111,8 @@ static storfs_err_t process_indirect_extents(storfs_t        *fs,
                                              SNodeExtentCache cache,
                                              void            *arg) {
   (void)arg;
-  SNode       *node = &inst->node;
-  uint32_t     idx  = calc_single_idx(cache.idx);
-  storfs_err_t err  = STORFS_OK;
+  SNode   *node = &inst->node;
+  uint32_t idx  = calc_single_idx(cache.idx);
 
   if(!node->indirect.single) {
     return STORFS_OK;
