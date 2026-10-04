@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+TEST_SOURCE_FILE("locate.c")
 #define SIZE_SNODE_COMPARE        fake_storfs_get_page_size()
 #define NUM_SNODE_COMPARE         (SIZE_SNODE_COMPARE / sizeof(SNode))
 #define FAKE_CRC16                (0x123A)
