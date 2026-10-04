@@ -23,6 +23,9 @@
 #define SNODE_CHECK_TYPE_FILE(snode) (snode->type & SNODE_TYPE_FILE)
 #define SNODE_CHECK_TYPE_DIR(snode)  (snode->type & SNODE_TYPE_DIR)
 
+#define EXTENTS_PER_PAGE(f) ((f->pageSize / sizeof(SNodeExtent)))
+#define INLINE_DATA_SIZE(f) (f->pageSize - sizeof(SNode))
+
 typedef struct {
   storfs_page_t start;
   storfs_page_t count;
@@ -73,4 +76,10 @@ storfs_err_t snode_write_data(storfs_t      *fs,
 storfs_err_t
 snode_read_data(storfs_t *fs, SNodeInst *inst, uint8_t *data, uint32_t *size);
 storfs_err_t snode_erase_data(storfs_t *fs, SNodeInst *inst, uint32_t *size);
+
+typedef struct {
+  storfs_page_t single_location;
+  storfs_page_t total;
+} SNodeMultiple;
+
 #endif
