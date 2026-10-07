@@ -157,7 +157,7 @@ calculate_pages_erased(const storfs_t         *fs,
                        const SNodeExtentCache *cache,
                        storfs_size_t           bytes_erased,
                        storfs_size_t           bytes_in_extent) {
-  // If SNode page do not free SNODE
+  // If SNode page do not free
   if(!cache->idx) {
     return 0;
   }
