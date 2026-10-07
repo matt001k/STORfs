@@ -413,11 +413,17 @@ void test_snode_erase_random(void) {
     }
   } while(inst.node.size && err == STORFS_OK);
 
+  TEST_ASSERT_EQUAL(0, inst.node.size);
+
+  // Validate all pages have been freed
+  uint8_t alloc = 0;
   for(storfs_page_t p = page + 1; p < fs->pageCount; p++) {
-    uint8_t alloc = 0;
     TEST_ASSERT_EQUAL(bitmap_get_alloc(fs, p, &alloc), STORFS_OK);
     TEST_ASSERT_EQUAL(alloc, PAGE_FREE);
   }
+  // Validate the the SNode itself was not deleted
+  TEST_ASSERT_EQUAL(bitmap_get_alloc(fs, page, &alloc), STORFS_OK);
+  TEST_ASSERT_EQUAL(alloc, PAGE_ALLOC);
 }
 
 void test_snode_find_location(void) {

@@ -142,18 +142,26 @@ calculate_bytes_erased(const storfs_t         *fs,
                        const SNodeExtentCache *cache,
                        storfs_size_t          *bytes_in_extent) {
   storfs_size_t bytes_remaining = op->bytes_remaining;
+  storfs_size_t bytes_in_full_extent =
+      !cache->idx ? INLINE_DATA_SIZE(fs) : op->extent.count * fs->pageSize;
 
-  *bytes_in_extent = cache->offset_bytes ? cache->offset_bytes
-                                         : op->extent.count * fs->pageSize;
+  *bytes_in_extent =
+      cache->offset_bytes ? cache->offset_bytes : bytes_in_full_extent;
 
   return bytes_remaining > *bytes_in_extent ? *bytes_in_extent
                                             : bytes_remaining;
 }
 
 static inline storfs_page_t
-calculate_pages_erased(const storfs_t *fs,
-                       storfs_size_t   bytes_erased,
-                       storfs_size_t   bytes_in_extent) {
+calculate_pages_erased(const storfs_t         *fs,
+                       const SNodeExtentCache *cache,
+                       storfs_size_t           bytes_erased,
+                       storfs_size_t           bytes_in_extent) {
+  // If SNode page do not free SNODE
+  if(!cache->idx) {
+    return 0;
+  }
+
   bool          fully_drains_extent = bytes_erased == bytes_in_extent;
   storfs_page_t pages_before        = CEIL_DIV(bytes_in_extent, fs->pageSize);
   storfs_page_t pages_after =
@@ -198,7 +206,7 @@ static storfs_err_t erase_data(storfs_t    *fs,
   storfs_size_t     bytes_erased =
       calculate_bytes_erased(fs, op, cache, &bytes_in_extent);
   storfs_page_t pages_erased =
-      calculate_pages_erased(fs, bytes_erased, bytes_in_extent);
+      calculate_pages_erased(fs, cache, bytes_erased, bytes_in_extent);
   uint32_t page_start = op->extent.start + op->extent.count - pages_erased;
 
   if(pages_erased) {
