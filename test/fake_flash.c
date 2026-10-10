@@ -114,3 +114,17 @@ void fake_storfs_fail_op(FlashOperation op, bool fail, uint32_t count) {
     ctx.fail_tracker[op] = 0;
   }
 }
+
+void fake_storfs_read_page_raw(storfs_page_t page,
+                               uint8_t      *buf,
+                               storfs_size_t size) {
+  if(page >= fake_storfs_get_page_count() || !buf || !size) {
+    return;
+  }
+
+  storfs_size_t page_size   = fake_storfs_get_page_size();
+  storfs_size_t read_size   = size < page_size ? size : page_size;
+  storfs_page_t page_offset = page * page_size;
+
+  memcpy(buf, &ctx.flash_sim[page_offset], read_size);
+}
