@@ -398,8 +398,6 @@ void test_snode_erase_random(void) {
   // Test erasing random sizes
   write_buf = fill_snode(&inst, &buf_size, chunk_size);
   storfs_err_t err;
-  uint32_t     i = 0;
-
   do {
     chunk_size = random_integer(RANDOM_DATA_MAX_CHUNK);
 
@@ -408,9 +406,7 @@ void test_snode_erase_random(void) {
     TEST_ASSERT_EQUAL(err, STORFS_OK);
     buf_size -= erased;
     TEST_ASSERT_EQUAL(inst.node.size, buf_size);
-    if(i % 256) {
-      full_read_helper(&inst, write_buf, buf_size, 0, true, 0);
-    }
+    full_read_helper(&inst, write_buf, buf_size, 0, true, 0);
   } while(inst.node.size && err == STORFS_OK);
 
   TEST_ASSERT_EQUAL(0, inst.node.size);
@@ -424,6 +420,55 @@ void test_snode_erase_random(void) {
   // Validate the the SNode itself was not deleted
   TEST_ASSERT_EQUAL(bitmap_get_alloc(fs, page, &alloc), STORFS_OK);
   TEST_ASSERT_EQUAL(alloc, PAGE_ALLOC);
+}
+
+struct SNodeMultipleTest {
+  storfs_page_t page;
+  const char    name[STORFS_MAX_FILE_NAME];
+  SNodeInst     inst;
+};
+
+void test_snode_write_multiple_erase_single_snode(void) {
+  struct SNodeMultipleTest tests[] = {
+    { 17,   FAKE_NAME "123", { 0 } },
+    { 18, FAKE_NAME "12345", { 0 } },
+  };
+
+  storfs_crc16_IgnoreAndReturn(FAKE_CRC16);
+
+  storfs_size_t chunk_size = fs->pageSize * 3;
+  uint32_t      buf_size;
+  uint8_t      *write_buf;
+  storfs_size_t page_size = fake_storfs_get_page_size();
+  uint8_t       page_buf[page_size];
+
+  for(size_t i = 0; i < ARRAY_SIZE(tests); i++) {
+    const char    *name = tests[i].name;
+    SNodeInst     *inst = &tests[i].inst;
+    storfs_page_t *page = &tests[i].page;
+
+    TEST_ASSERT_EQUAL(snode_create(fs, name, page, SNODE_TYPE_FILE), STORFS_OK);
+    TEST_ASSERT_EQUAL(snode_lookup(fs, *page, inst), STORFS_OK);
+
+    write_buf = fill_snode(inst, &buf_size, chunk_size);
+  }
+
+  // Delete the whole first snode
+  storfs_err_t err;
+  TEST_ASSERT_EQUAL(snode_erase_data(fs, &tests[0].inst, &buf_size), STORFS_OK);
+  TEST_ASSERT_EQUAL(0, tests[0].inst.node.size);
+
+  uint8_t alloc = 0;
+  // Validate the the SNode itself was not deleted
+  TEST_ASSERT_EQUAL(bitmap_get_alloc(fs, tests[0].page, &alloc), STORFS_OK);
+  TEST_ASSERT_EQUAL(alloc, PAGE_ALLOC);
+
+  // Validate the the seconnd SNode was not deleted
+  TEST_ASSERT_EQUAL(bitmap_get_alloc(fs, tests[1].page, &alloc), STORFS_OK);
+  TEST_ASSERT_EQUAL(alloc, PAGE_ALLOC);
+
+  // Validate the second SNode is still readable
+  full_read_helper(&tests[1].inst, write_buf, buf_size, 0, true, 0);
 }
 
 void test_snode_find_location(void) {
