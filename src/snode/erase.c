@@ -107,29 +107,31 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
     return err;
   }
 
-  // Safe to free single-indirect page now that parent is on flash
-  if(!extent.start && !idx.indirect) {
-    err = bitmap_alloc_page(fs, single_location, PAGE_FREE);
-    if(err != STORFS_OK) {
-      return err;
-    }
-  }
-
   err = atomic_read(fs, node->indirect.multiple);
   if(err != STORFS_OK) {
     return err;
   }
   multiple = &((SNodeMultiple *)fs->working_buf)[idx.multiple];
   multiple->total -= pages_erased;
-  if(!multiple->total) {
+  bool unlinked = !multiple->total;
+  if(unlinked) {
     multiple->single_location = 0;
   }
   err = atomic_write(fs, node->indirect.multiple);
   if(err != STORFS_OK) {
     return err;
   }
+
+  // Safe to free after multiple page no longer references the single page
+  if(unlinked) {
+    err = bitmap_alloc_page(fs, single_location, PAGE_FREE);
+    if(err != STORFS_OK) {
+      return err;
+    }
+  }
+
   // If the first multiple extent is empty, free it
-  if(!idx.multiple && !multiple->single_location) {
+  if(!idx.multiple && unlinked) {
     err = erase_snode_indirect_page(fs, inst, &node->indirect.multiple);
   }
 
