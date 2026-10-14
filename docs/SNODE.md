@@ -20,7 +20,8 @@ The following calculates the amount of inline data following the SNode:
 s = p_s - 128
 ```
 
-Where $s$ is the size of the data and $p_s$ is the filesystem's page size.
+Where $s$ is the size of the inlined data in bytes
+and $p_s$ is the filesystem's page size in bytes.
 All other data for the associated SNode is stored elsewhere on the file system.
 This is done through a concept called page extents,
 which point to the other data locations on the file system.
@@ -37,8 +38,8 @@ typedef struct {
 } SNodeExtent;
 ```
 
-Where start represents the beginning page location of the extent,
-and count represents the total number of contiguous pages in the extent.
+Where `start` represents the beginning page location of the extent,
+and `count` represents the total number of contiguous pages in the extent.
 A visual example of this with `start = 100` and `count = 5` would look like:
 
 ```
@@ -56,7 +57,8 @@ start = 100
                         count = 5
 ```
 
-The extent starts on page **100** and extends for **5** pages to page **104**.
+In this example,
+the extent starts on page **100** and extends for **5** pages to page **104**.
 
 Within each SNode there are three layers of extent storage.
 These are described in the subsequent sections.
@@ -67,11 +69,12 @@ These extents exist as an array of `DIRECT_EXTENT_SIZE` elements directly in the
 When finding an SNode's data location,
 the direct extents are checked first.
 This is the location in which the fastest lookup times are available: **O(1)**.
-Keeping files within the direct extents can greatly speed up initially accessing an SNode (this process will be explained in SNode [operations](#operations)).
+Keeping files within the direct extents can greatly speed up initially accessing an SNode
+(this process is explained in SNode [operations](#operations)).
 
 ### Single Indirect
 
-The single indirect parameter in the SNode entry points to a page consisting fully of extent entries.
+The single indirect parameter in the SNode struct points to a page consisting fully of extent entries.
 A single indirect extent page can be visually represented as follows:
 
 ```
@@ -101,14 +104,16 @@ Indirect pages have the following number of extents:
 N = p_s / s_e
 ```
 
-Where $N$ is the number of extents,
-$p_s$ is the page size,
+Where $N$ is the number of extents in the single indirect page,
+$p_s$ is the page size in bytes,
 and $s_e$ is the size of an extent entry, `sizeof(SNodeExtent)`.
 
 ### Multiple Extents
 
 The final layer of extents are multiple extents.
-Each entry in the multiple extent pages has the following contents:
+Similar to the single indirect extent page,
+the multiple indirect page parameter points to a page in the file system consisting solely of multiple extent entries.
+Each entry in the multiple extent page has the following contents:
 
 ```c
 typedef struct {
@@ -127,7 +132,7 @@ t = \sum_{i=1}^{N} c_i
 
 Where $t$ is the total number of pages allocated in the single indirect extent page.
 $N$ is the number of extents in the single indirect extent page.
-$c_i$ is the count of the $i$th extent in the single indirect extent page.
+$c_i$ is the count of the $i$ th extent in the single indirect extent page.
 
 A multiple extent page can be visually represented as follows:
 
