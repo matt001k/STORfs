@@ -22,7 +22,9 @@ RUN apt install --no-install-recommends -y \
     bison \
     doxygen \
     astyle
-RUN gem install ceedling
+RUN git clone https://github.com/ThrowTheSwitch/Ceedling.git
+RUN cd Ceedling && git checkout v1.1.10 && git submodule update --init --recursive
+RUN cd Ceedling && gem build ceedling.gemspec && gem install ./ceedling-1.1.0.gem --no-document
 RUN pip3 install --break-system-packages gcovr==8.4
 
 COPY ./run.sh /run.sh
