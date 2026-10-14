@@ -63,7 +63,7 @@ static storfs_err_t storfs_write(const storfs_t *fs,
 }
 
 static storfs_err_t storfs_erase(const storfs_t *fs, storfs_page_t page) {
-  if(has_failed(ERASE) && ++ctx.fail_tracker[ERASE] >= ctx.fail_count[ERASE]) {
+  if(has_failed(ERASE)) {
     return STORFS_ERROR;
   }
 
