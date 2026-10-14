@@ -282,12 +282,14 @@
     # - lcov
     # - Xml
     # - XmlSummary
+    #
   :gcovr:
     :html_artifact_filename: STORfsTestCoverage.html
     :html_title: STORfs
     :html_medium_threshold: 75
     :html_high_threshold: 90
     :report_exclude: "^test|^build"
+    :report_include: "^src"
     :report_root: ".."
     :gcovr_additional_args:
       - "--exclude-unreachable-branches"
