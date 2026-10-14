@@ -231,7 +231,7 @@ due to the following reasons:
 All locate functionality has an **O(n)** time complexity,
 where *n* is the number of extent entries traversed.
 This has the lowest performance of the operations performed on an SNode,
-but it only needs to be run once on an SNode.
+but it only needs to be run once on an SNode before reading or modifying the SNode's contents.
 
 ### Read
 
