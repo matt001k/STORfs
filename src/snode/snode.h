@@ -102,6 +102,8 @@ typedef struct SNodeOpInst {
   SNodeOp     op;
   uint32_t    bytes_remaining;
   SNodeOpCb   cb;
+  SNodeExtentCache *cache;  // Cache to use for this operation
+  bool update_snode;  // Should update the SNode at the end of the operation
 } SNodeOpInst;
 
 typedef struct {
@@ -121,11 +123,6 @@ typedef struct {
   ProcessExtentCb multiple;
 } SNodeHandleExtentCbs;
 
-typedef struct {
-  storfs_size_t indirect;
-  storfs_size_t multiple;
-} SNodeMultipleIdx;
-
 storfs_err_t snode_alloc_new_page(storfs_t *fs, storfs_page_t *page);
 storfs_err_t snode_update(storfs_t *fs, SNode *node, storfs_page_t page);
 
@@ -141,10 +138,27 @@ storfs_err_t snode_perform_op(storfs_t    *fs,
                               uint8_t     *data,
                               uint32_t    *size);
 
+/*!
+ @brief Calculate the index offset in the single extent of an SNode instance
+
+ @details Helper function to determine which single indirect index will be
+          accessed for a specific operation.
+
+ @param idx overall cache idx
+
+ @return index offset in single extent to obtain
+ */
 static inline storfs_size_t calc_single_idx(storfs_size_t idx) {
   return idx - DIRECT_EXTENT_SIZE;
 }
 
+/*!
+ @brief Obtain the max indices for single and multiple extents
+
+ @param fs pointer to the filesystem instance
+
+ @return max indices for single and multiple extents
+ */
 static inline SNodeIdxCount calc_snode_idx(const storfs_t *fs) {
   const uint32_t extents_per_page     = EXTENTS_PER_PAGE(fs);
   const uint32_t single_indirect_size = DIRECT_EXTENT_SIZE + extents_per_page;
@@ -156,6 +170,23 @@ static inline SNodeIdxCount calc_snode_idx(const storfs_t *fs) {
   };
 }
 
+typedef struct {
+  storfs_size_t indirect;
+  storfs_size_t multiple;
+} SNodeMultipleIdx;
+
+/*!
+ @brief Calculate the index offset in the multiple extent of an SNode
+
+ @details Helper function to determine which multiple indirect index will be
+          accessed for a specific operation.
+
+ @param idx overall cache idx
+
+ @return @link SNodeMultipleIdx @endlink which describes the:
+            - multiple index of interest
+            - the single extent index of interest within the multiple location
+ */
 static inline SNodeMultipleIdx calc_multiple_idx(const storfs_t *fs,
                                                  storfs_size_t   idx) {
   SNodeIdxCount  count = calc_snode_idx(fs);

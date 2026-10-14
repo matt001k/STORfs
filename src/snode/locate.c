@@ -8,9 +8,9 @@
 #define NUM_MULTIPLE_EXTENTS(f) ((f->pageSize / sizeof(SNodeMultiple)))
 
 /*!
- @brief Lookup an snode based on a page location
+ @brief Lookup an SNode based on a page location
 
- @details Finds information about an snode. Will validate the crc matches what
+ @details Finds information about an SNode. Will validate the crc matches what
           is expected in order to validate the contents of the snode.
 
  @param fs pointer to the filesystem instance
@@ -197,8 +197,8 @@ static storfs_err_t find_location(storfs_t         *fs,
 /*!
  @brief Find the read location extent index based on an offset byte location
 
- @details Will find the location to begin reading an snode from. This must be
-          invoked before an snode is initially read. Will update the read cache
+ @details Will find the location to begin reading an SNode from. This must be
+          invoked before an SNode is initially read. Will update the read cache
           when STORFS_OK, STORFS_ERR_NOT_FOUND or STORFS_ERR_NO_SPACE is
           returned.
 

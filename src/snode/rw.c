@@ -150,7 +150,7 @@ static storfs_err_t snode_read_or_write_data(storfs_t    *fs,
                                              uint8_t     *data,
                                              uint32_t     size) {
   SNodeExtent      *extent = &op->extent;
-  SNodeExtentCache *cache  = op->op == SNODE_WRITE ? &inst->write : &inst->read;
+  SNodeExtentCache *cache  = op->cache;
   storfs_err_t      err;
 
   // Only update the extent if it is on a byte boundary, else the current
@@ -179,13 +179,12 @@ static storfs_err_t snode_read_or_write_data(storfs_t    *fs,
   storfs_page_t pages_accessed = 0;
   storfs_page_t pages_accessed_total =
       op->extent.count - (location.pageLoc - op->extent.start);
-  uint32_t bytes_to_process = 0;
 
   // Loop through extents performing necessary action
   while(pages_accessed < pages_accessed_total) {
-    uint32_t page_size_left = fs->pageSize - location.byteLoc;
-    bytes_to_process        = MIN(op->bytes_remaining, page_size_left);
-    uint32_t data_offset    = size - op->bytes_remaining;
+    uint32_t page_size_left   = fs->pageSize - location.byteLoc;
+    uint32_t bytes_to_process = MIN(op->bytes_remaining, page_size_left);
+    uint32_t data_offset      = size - op->bytes_remaining;
 
     switch(op->op) {
       case SNODE_WRITE:
@@ -194,6 +193,7 @@ static storfs_err_t snode_read_or_write_data(storfs_t    *fs,
                bytes_to_process);
 
         err = atomic_write(fs, location.pageLoc);
+        inst->node.size += err == STORFS_OK ? bytes_to_process : 0;
         break;
       case SNODE_READ:
         memcpy(&data[data_offset],
@@ -241,7 +241,7 @@ static storfs_err_t snode_read_or_write_data(storfs_t    *fs,
 }
 
 /*!
- @brief Write data to an snode instance
+ @brief Write data to an SNode instance
 
  @details Must call @link snode_find_write_location @endlink before writing to
           the snode. This function will append data to the end of the snode.
@@ -251,7 +251,7 @@ static storfs_err_t snode_read_or_write_data(storfs_t    *fs,
  @param inst pointer to snode instance
  @param data data to write to the snode
  @param size size of data to write to the snode, the total size is written
-             here
+             is retuned through this variable
 
  @return STORFS_OK on success
          STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
@@ -273,22 +273,25 @@ storfs_err_t snode_write_data(storfs_t      *fs,
     .op              = SNODE_WRITE,
     .bytes_remaining = *size,
     .cb              = snode_read_or_write_data,
+    .cache           = &inst->write,
+    .update_snode    = true,
   };
   return snode_perform_op(fs, inst, &op, (uint8_t *)data, size);
 }
 
 /*!
- @brief Read data from an snode instance
+ @brief Read data from an SNode instance
 
  @details Must call @link snode_find_read_location @endlink before reading
- from an snode. This function will begin reading from the offset indicated in
- @link snode_find_read_location @endlink.
+          from an snode. This function will begin reading from the offset
+          indicated in @link snode_find_read_location @endlink. The cache
+          read location will be updated with each read performed.
 
  @param fs pointer to the filesystem instance
  @param inst pointer to snode instance
  @param data data to read from the snode
  @param size size of data to read from the snode, the total size read is
-             written here
+             returned through this variable
 
  @return STORFS_OK on success
          STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
@@ -314,6 +317,8 @@ snode_read_data(storfs_t *fs, SNodeInst *inst, uint8_t *data, uint32_t *size) {
     .op              = SNODE_READ,
     .bytes_remaining = *size,
     .cb              = snode_read_or_write_data,
+    .cache           = &inst->read,
+    .update_snode    = false,
   };
   storfs_err_t op_err = snode_perform_op(fs, inst, &op, (uint8_t *)data, size);
   if(op_err != STORFS_OK) {

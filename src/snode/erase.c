@@ -90,6 +90,14 @@ static storfs_err_t erase_multiple_extent(storfs_t        *fs,
                                           SNodeOpInst     *op,
                                           SNodeExtentCache cache,
                                           void            *arg) {
+  // Order of events need to be as follows:
+  //  1. Update extent information in single indirect page
+  //  2. Update multiple extent page with number of pages erased
+  //  3. Free single indirect page if all of its extents are erased
+  //  4. If there are no more single extents, free the multiple page
+  // This safely allows for a file system check to reclaim lost pages in the
+  // event corruption due to a loss of power
+
   SNode           *node         = &inst->node;
   storfs_page_t    pages_erased = *(storfs_page_t *)arg;
   SNodeMultipleIdx idx          = calc_multiple_idx(fs, cache.idx);
@@ -224,6 +232,7 @@ static storfs_err_t erase_data(storfs_t    *fs,
   }
 
   if(err == STORFS_OK) {
+    inst->node.size -= bytes_erased;
     cache->processed_bytes -= bytes_erased;
     op->bytes_remaining -= bytes_erased;
   }
@@ -239,7 +248,7 @@ static storfs_err_t erase_data(storfs_t    *fs,
 }
 
 /*!
- @brief Erase data from an snode instance
+ @brief Erase data from an SNode instance
 
  @details Must call @link snode_find_write_location @endlink before erasing
           data from an snode. This function will erase data from the end
@@ -249,7 +258,7 @@ static storfs_err_t erase_data(storfs_t    *fs,
  @param fs pointer to the filesystem instance
  @param inst pointer to snode instance
  @param size size of data to erase from the snode, the number of bytes erased
-             are written here
+             is returned through this variable
 
  @return STORFS_OK on success
          STORFS_ERR_NULL_POINTER if NULL pointers passed into arguments
@@ -277,6 +286,8 @@ storfs_err_t snode_erase_data(storfs_t *fs, SNodeInst *inst, uint32_t *size) {
     .op              = SNODE_ERASE,
     .bytes_remaining = *size,
     .cb              = erase_data,
+    .cache           = &inst->write,
+    .update_snode    = true,
   };
 
   return snode_perform_op(fs, inst, &op, NULL, size);

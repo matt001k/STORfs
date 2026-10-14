@@ -6,6 +6,16 @@
 
 #include <string.h>
 
+/*!
+ @brief Allocate a new page for an SNode operation
+
+ @details Allocates a new page and then zeroes out the new page
+
+ @param fs pointer to the filesystem instance
+ @param page page which has been allocated to the snode
+
+ @return storfs_err_t
+ */
 storfs_err_t snode_alloc_new_page(storfs_t *fs, storfs_page_t *page) {
   storfs_err_t err = bitmap_alloc(fs, page);
   if(err != STORFS_OK) {
@@ -17,6 +27,17 @@ storfs_err_t snode_alloc_new_page(storfs_t *fs, storfs_page_t *page) {
   return atomic_write(fs, *page);
 }
 
+/*!
+ @brief Update the SNode data structure
+
+ @details Recalculates CRC16 and then saves the SNode to flash.
+
+ @param fs pointer to the filesystem instance
+ @param snode SNode to update
+ @param page page where the SNode is located at
+
+ @return storfs_err_t
+ */
 storfs_err_t snode_update(storfs_t *fs, SNode *node, storfs_page_t page) {
   // Read snode page to preserve inline data
   storfs_err_t err = atomic_read(fs, page);
@@ -34,17 +55,18 @@ storfs_err_t snode_update(storfs_t *fs, SNode *node, storfs_page_t page) {
 }
 
 /*!
- @brief Create an snode
+ @brief Create an SNode
 
  @details This function will allocate a page for a new snode and save it.
-          The snode will be available again through the @link
-          snode_lookup @endlink function. When the snode is saved, a crc
-          is calculated just on the data structure.
+          The SNode will be available again through the @link
+          snode_lookup @endlink function. Use that API to open the SNode in the
+          future. When the snode is saved, a crc is calculated just on the data
+          structure.
 
  @param fs pointer to the filesystem instance
  @param name snode name
  @param page page which has been allocated to the snode
- @param size type of snode:
+ @param type type of snode:
                 SNODE_TYPE_FILE
                 SNODE_TYPE_DIR
 
@@ -151,24 +173,36 @@ static storfs_err_t process_multiple_extents(storfs_t        *fs,
                               cache);
 }
 
+/*!
+ @brief Function used to obtain or modify the extents in an SNode
+
+ @details This is called with a number of callbacks used to get or modify:
+            - Direct
+            - Single Indirect
+            - Multiple Indirect
+          extents respectively. The three following functions:
+            - process_direct_extents,
+            - process_indirect_extents,
+            - process_multiple_extents,
+          are extremely helpful for obtaining the location in an extent
+          to read from/access, they are used in @link snode_perform_op
+          @endlink.
+
+ @param fs pointer to the filesystem instance
+ @param inst SNode instance to access
+ @param op operation information to perform on the SNode
+ @param cbs the callbacks associated with this functions invocation
+ @param arg an argument to pass to the callbacks
+
+ @return storfs_err_t
+ */
 storfs_err_t get_modify_extents(storfs_t            *fs,
                                 SNodeInst           *inst,
                                 SNodeOpInst         *op,
                                 SNodeHandleExtentCbs cbs,
                                 void                *arg) {
-  SNodeExtentCache extent_cache;
-  SNodeIdxCount    idx = calc_snode_idx(fs);
-
-  switch(op->op) {
-    case SNODE_WRITE:
-    case SNODE_ERASE:
-      extent_cache = inst->write;
-      break;
-    case SNODE_READ:
-    default:
-      extent_cache = inst->read;
-      break;
-  }
+  SNodeExtentCache extent_cache = *op->cache;
+  SNodeIdxCount    idx          = calc_snode_idx(fs);
 
   // Inline page
   if(!extent_cache.idx) {
@@ -190,6 +224,19 @@ storfs_err_t get_modify_extents(storfs_t            *fs,
   return STORFS_ERR_NO_FREE_BLOCKS;
 }
 
+/*!
+ @brief Perform an operation on an SNode
+
+ @details Find the location to access in the current SNode, based on the
+          corresponding cache, then perform a specific operations withinA
+          that location. Newly added SNode operations should leverage this
+          function.
+
+ @param fs pointer to the filesystem instance
+ @param page page which has been allocated to the snode
+
+ @return storfs_err_t
+ */
 storfs_err_t snode_perform_op(storfs_t    *fs,
                               SNodeInst   *inst,
                               SNodeOpInst *op,
@@ -219,13 +266,7 @@ storfs_err_t snode_perform_op(storfs_t    *fs,
     return err;
   }
 
-  if(op->op == SNODE_WRITE) {
-    inst->node.size += processed_bytes;
-  } else if(op->op == SNODE_ERASE) {
-    inst->node.size -= processed_bytes;
-  }
-
-  if(op->op != SNODE_READ) {
+  if(op->update_snode) {
     storfs_err_t update_err = snode_update(fs, &inst->node, inst->page);
     if(err == STORFS_OK) {
       err = update_err;
